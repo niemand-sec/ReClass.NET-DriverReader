@@ -4,6 +4,7 @@ using namespace System;
 using namespace ReClassNET;
 using namespace ReClassNET::Nodes;
 using namespace ReClassNET::Plugins;
+using namespace ReClassNET::Util;
 
 namespace SamplePluginHybrid
 {
