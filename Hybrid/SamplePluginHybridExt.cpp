@@ -5,18 +5,11 @@ namespace SamplePluginHybrid
 	/// <summary>This method gets called when ReClass.NET loads the plugin.</summary>
 	bool SamplePluginHybridExt::Initialize(IPluginHost^ host)
 	{
-		if (host == nullptr)
-		{
-			throw gcnew ArgumentNullException("host");
-		}
-
 		this->host = host;
 
 		// Register a node info reader to display custom data on nodes.
-		if (reader == nullptr)
-		{
-			reader = gcnew SampleNodeInfoReader;
-		}
+		reader = gcnew SampleNodeInfoReader;
+
 		host->RegisterNodeInfoReader(reader);
 
 		return true;

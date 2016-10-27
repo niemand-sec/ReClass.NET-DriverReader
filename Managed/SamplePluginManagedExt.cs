@@ -8,8 +8,11 @@ using ReClassNET.Plugins;
 using ReClassNET.UI;
 using ReClassNET.Util;
 
+// The namespace name must equal the plugin name
 namespace SamplePluginManaged
 {
+
+	/// <summary>The class name must equal the namespace name + "Ext"</summary>
 	public class SamplePluginManagedExt : Plugin
 	{
 		private IPluginHost host;
@@ -21,21 +24,14 @@ namespace SamplePluginManaged
 		/// <summary>This method gets called when ReClass.NET loads the plugin.</summary>
 		public override bool Initialize(IPluginHost host)
 		{
-			if (host == null)
-			{
-				throw new ArgumentNullException(nameof(host));
-			}
-
 			this.host = host;
 
 			// Notfiy the plugin if a window is shown.
 			GlobalWindowManager.WindowAdded += OnWindowAdded;
 
 			// Register a node info reader to display custom data on nodes.
-			if (reader == null)
-			{
-				reader = new SampleNodeInfoReader();
-			}
+			reader = new SampleNodeInfoReader();
+
 			host.RegisterNodeInfoReader(reader);
 
 			return true;
@@ -55,7 +51,7 @@ namespace SamplePluginManaged
 
 		/// <summary>
 		/// This method gets called when a new windows is opened.
-		/// You can use this function to add a settings panel into the original form.
+		/// You can use this function to add a settings panel into the settings dialog for example.
 		/// </summary>
 		private void OnWindowAdded(object sender, GlobalWindowManagerEventArgs e)
 		{

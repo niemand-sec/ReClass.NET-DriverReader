@@ -6,8 +6,10 @@ using namespace ReClassNET::Nodes;
 using namespace ReClassNET::Plugins;
 using namespace ReClassNET::Util;
 
+// The namespace name must equal the plugin name
 namespace SamplePluginHybrid
 {
+	/// <summary>The class name must equal the namespace name + "Ext"</summary>
 	public ref class SamplePluginHybridExt : Plugin
 	{
 	public:
