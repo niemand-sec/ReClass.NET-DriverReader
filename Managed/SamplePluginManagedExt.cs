@@ -42,7 +42,7 @@ namespace SamplePluginManaged
 		{
 			// Clean up what you have registered.
 
-			host.UnregisterNodeInfoReader(reader);
+			host.DeregisterNodeInfoReader(reader);
 
 			GlobalWindowManager.WindowAdded -= OnWindowAdded;
 

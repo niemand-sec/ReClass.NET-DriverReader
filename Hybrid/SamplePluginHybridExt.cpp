@@ -18,7 +18,7 @@ namespace SamplePluginHybrid
 	/// <summary>This method gets called when ReClass.NET unloads the plugin.</summary>
 	void SamplePluginHybridExt::Terminate()
 	{
-		host->UnregisterNodeInfoReader(reader);
+		host->DeregisterNodeInfoReader(reader);
 
 		host = nullptr;
 	}
