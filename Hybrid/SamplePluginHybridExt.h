@@ -2,9 +2,9 @@
 
 using namespace System;
 using namespace ReClassNET;
+using namespace ReClassNET::Memory;
 using namespace ReClassNET::Nodes;
 using namespace ReClassNET::Plugins;
-using namespace ReClassNET::Util;
 
 // The namespace name must equal the plugin name
 namespace SamplePluginHybrid
@@ -24,6 +24,6 @@ namespace SamplePluginHybrid
 	ref class SampleNodeInfoReader : INodeInfoReader
 	{
 	public:
-		virtual String^ ReadNodeInfo(BaseNode^ node, IntPtr value, Memory^ memory);
+		virtual String^ ReadNodeInfo(BaseNode^ node, IntPtr value, MemoryBuffer^ memory);
 	};
 }

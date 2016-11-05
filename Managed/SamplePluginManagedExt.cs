@@ -3,10 +3,10 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using ReClassNET.Forms;
+using ReClassNET.Memory;
 using ReClassNET.Nodes;
 using ReClassNET.Plugins;
 using ReClassNET.UI;
-using ReClassNET.Util;
 
 // The namespace name must equal the plugin name
 namespace SamplePluginManaged
@@ -95,7 +95,7 @@ namespace SamplePluginManaged
 	class SampleNodeInfoReader : INodeInfoReader
 	{
 		/// <summary>This method lets ReClass.NET print the name and the value of the node.</summary>
-		public string ReadNodeInfo(BaseNode node, IntPtr value, Memory memory)
+		public string ReadNodeInfo(BaseNode node, IntPtr value, MemoryBuffer memory)
 		{
 			return $"{node.Name} => {value.ToString("X")}";
 		}
