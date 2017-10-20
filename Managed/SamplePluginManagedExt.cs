@@ -11,7 +11,6 @@ using ReClassNET.UI;
 // The namespace name must equal the plugin name
 namespace SamplePluginManaged
 {
-
 	/// <summary>The class name must equal the namespace name + "Ext"</summary>
 	public class SamplePluginManagedExt : Plugin
 	{
@@ -55,8 +54,7 @@ namespace SamplePluginManaged
 		/// </summary>
 		private void OnWindowAdded(object sender, GlobalWindowManagerEventArgs e)
 		{
-			var settingsForm = e.Form as SettingsForm;
-			if (settingsForm != null)
+			if (e.Form is SettingsForm settingsForm)
 			{
 				settingsForm.Shown += delegate (object sender2, EventArgs e2)
 				{
@@ -65,8 +63,10 @@ namespace SamplePluginManaged
 						var settingsTabControl = settingsForm.Controls.Find("settingsTabControl", true).FirstOrDefault() as TabControl;
 						if (settingsTabControl != null)
 						{
-							var newTab = new TabPage("SamplePlugin");
-							newTab.UseVisualStyleBackColor = true;
+							var newTab = new TabPage("SamplePlugin")
+							{
+								UseVisualStyleBackColor = true
+							};
 
 							// You can use a custom control here so you have designer support
 
@@ -76,8 +76,10 @@ namespace SamplePluginManaged
 
 							// or add the controls manually.
 
-							var checkBox = new CheckBox();
-							checkBox.Text = "Use Sample Setting";
+							var checkBox = new CheckBox
+							{
+								Text = "Use Sample Setting"
+							};
 							newTab.Controls.Add(checkBox);
 
 							settingsTabControl.TabPages.Add(newTab);
@@ -92,7 +94,7 @@ namespace SamplePluginManaged
 		}
 	}
 
-	class SampleNodeInfoReader : INodeInfoReader
+	public class SampleNodeInfoReader : INodeInfoReader
 	{
 		/// <summary>This method lets ReClass.NET print the name and the value of the node.</summary>
 		public string ReadNodeInfo(BaseNode node, IntPtr value, MemoryBuffer memory)

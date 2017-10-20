@@ -1,11 +1,11 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 14
-VisualStudioVersion = 14.0.25420.1
+# Visual Studio 15
+VisualStudioVersion = 15.0.27004.2002
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SamplePluginManaged", "Managed\SamplePluginManaged.csproj", "{FEA8AC8E-3A1A-4990-8F78-39599E55F8F1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReClass.NET", "..\ReClass.NET\ReClass.NET.csproj", "{BFB8917D-E9B4-463F-A6E8-612C35728C78}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ReClass.NET", "..\ReClass.NET\ReClass.NET\ReClass.NET.csproj", "{BFB8917D-E9B4-463F-A6E8-612C35728C78}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SamplePluginHybrid", "Hybrid\SamplePluginHybrid.vcxproj", "{7E56DBB6-453E-48FA-B70E-62CA46BD0BB4}"
 EndProject
@@ -54,5 +54,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {A4D6E479-778F-44E1-A8AA-43098CD09FC3}
 	EndGlobalSection
 EndGlobal

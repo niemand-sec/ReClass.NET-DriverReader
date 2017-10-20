@@ -21,7 +21,7 @@ namespace SamplePluginHybrid
 		INodeInfoReader^ reader;
 	};
 
-	ref class SampleNodeInfoReader : INodeInfoReader
+	public ref class SampleNodeInfoReader : INodeInfoReader
 	{
 	public:
 		virtual String^ ReadNodeInfo(BaseNode^ node, IntPtr value, MemoryBuffer^ memory);
