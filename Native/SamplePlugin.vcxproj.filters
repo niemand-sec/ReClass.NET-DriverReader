@@ -18,4 +18,9 @@
       <Filter>Resources</Filter>
     </ResourceCompile>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="exports.def">
+      <Filter>Resources</Filter>
+    </None>
+  </ItemGroup>
 </Project>
