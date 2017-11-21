@@ -1,4 +1,3 @@
-#include <windows.h>
 #include <cstdint>
 
 #include <ReClassNET_Plugin.hpp>
