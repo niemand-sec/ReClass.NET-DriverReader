@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
@@ -15,7 +16,6 @@ namespace SamplePluginManaged
 	public class SamplePluginManagedExt : Plugin
 	{
 		private IPluginHost host;
-		private INodeInfoReader reader;
 
 		/// <summary>The icon to display in the plugin manager form.</summary>
 		public override Image Icon => null;
@@ -28,11 +28,6 @@ namespace SamplePluginManaged
 			// Notfiy the plugin if a window is shown.
 			GlobalWindowManager.WindowAdded += OnWindowAdded;
 
-			// Register a node info reader to display custom data on nodes.
-			reader = new SampleNodeInfoReader();
-
-			host.RegisterNodeInfoReader(reader);
-
 			return true;
 		}
 
@@ -41,11 +36,16 @@ namespace SamplePluginManaged
 		{
 			// Clean up what you have registered.
 
-			host.DeregisterNodeInfoReader(reader);
-
 			GlobalWindowManager.WindowAdded -= OnWindowAdded;
 
 			host = null;
+		}
+
+		public override IReadOnlyList<INodeInfoReader> GetNodeInfoReaders()
+		{
+			// Register a node info reader to display custom data on nodes.
+
+			return new[] { new SampleNodeInfoReader() };
 		}
 
 		/// <summary>
@@ -97,7 +97,7 @@ namespace SamplePluginManaged
 	public class SampleNodeInfoReader : INodeInfoReader
 	{
 		/// <summary>This method lets ReClass.NET print the name and the value of the node.</summary>
-		public string ReadNodeInfo(BaseNode node, IntPtr nodeAddress, IntPtr nodeValue, MemoryBuffer memory)
+		public string ReadNodeInfo(BaseHexCommentNode node, IntPtr nodeAddress, IntPtr nodeValue, MemoryBuffer memory)
 		{
 			return $"{node.Name}@{nodeAddress.ToString("X")} => {nodeValue.ToString("X")}";
 		}

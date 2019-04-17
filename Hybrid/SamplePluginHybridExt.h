@@ -1,6 +1,7 @@
 #pragma once
 
 using namespace System;
+using namespace System::Collections::Generic;
 using namespace ReClassNET;
 using namespace ReClassNET::Memory;
 using namespace ReClassNET::Nodes;
@@ -15,6 +16,7 @@ namespace SamplePluginHybrid
 	public:
 		virtual bool Initialize(IPluginHost^ host) override;
 		virtual void Terminate() override;
+		virtual IReadOnlyList<INodeInfoReader^>^ GetNodeInfoReaders() override;
 
 	private:
 		IPluginHost^ host;
@@ -24,6 +26,6 @@ namespace SamplePluginHybrid
 	public ref class SampleNodeInfoReader : INodeInfoReader
 	{
 	public:
-		virtual String^ ReadNodeInfo(BaseNode^ node, IntPtr nodeAddress, IntPtr nodeValue, MemoryBuffer^ memory);
+		virtual String^ ReadNodeInfo(BaseHexCommentNode^ node, IntPtr nodeAddress, IntPtr nodeValue, MemoryBuffer^ memory);
 	};
 }
