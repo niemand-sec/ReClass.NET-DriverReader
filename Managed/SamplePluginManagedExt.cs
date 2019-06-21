@@ -97,7 +97,7 @@ namespace SamplePluginManaged
 	public class SampleNodeInfoReader : INodeInfoReader
 	{
 		/// <summary>This method lets ReClass.NET print the name and the value of the node.</summary>
-		public string ReadNodeInfo(BaseHexCommentNode node, IntPtr nodeAddress, IntPtr nodeValue, MemoryBuffer memory)
+		public string ReadNodeInfo(BaseHexCommentNode node, IRemoteMemoryReader reader, MemoryBuffer memory, IntPtr nodeAddress, IntPtr nodeValue)
 		{
 			return $"{node.Name}@{nodeAddress.ToString("X")} => {nodeValue.ToString("X")}";
 		}

@@ -26,7 +26,7 @@ namespace SamplePluginHybrid
 	}
 
 	/// <summary>This method lets ReClass.NET print the name and the value of the node.</summary>
-	String^ SampleNodeInfoReader::ReadNodeInfo(BaseHexCommentNode^ node, IntPtr nodeAddress, IntPtr nodeValue, MemoryBuffer^ memory)
+	String^ SampleNodeInfoReader::ReadNodeInfo(BaseHexCommentNode^ node, IRemoteMemoryReader^ reader, MemoryBuffer^ memory, IntPtr nodeAddress, IntPtr nodeValue)
 	{
 		return node->Name + "@" + nodeAddress.ToString("X") + " => " + nodeValue.ToString("X");
 	}
