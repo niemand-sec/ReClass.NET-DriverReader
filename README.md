@@ -1,4 +1,4 @@
-# ReClass.NET-SamplePlugin
+# ReClass.NET-DriverReader
 Sample plugins for ReClass.NET (https://github.com/KN4CK3R/ReClass.NET).
 
 ## Compiling
