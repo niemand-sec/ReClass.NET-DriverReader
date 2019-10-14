@@ -297,7 +297,7 @@ ffffbe8c`2141d0b0  00000000 00000000 00000000 00000000
 
 */
 // This is necessary to check if the pointer we have its a KPROCESS pointer :)
-uintptr_t DriverReader::ObtainKProcessPointer(uintptr_t directoryTableBase, std::vector<uintptr_t> pKernelPointers)
+uintptr_t DriverReader::ObtainKProcessPointer(uint64_t directoryTableBase, std::vector<uintptr_t> pKernelPointers)
 {
 	//The header of a KPROCESS has the value 00b60003
 	unsigned int KProcessHeader = 0x00b60003;

@@ -76,6 +76,7 @@ public:
 	static uintptr_t GetKProcess(uintptr_t &directoryTableBase);
 	static uintptr_t SearchKProcess(LPCVOID processName, uintptr_t &directoryTableBase, uintptr_t pKProcess);
 	static bool ObtainKProcessInfo(uintptr_t &directoryTableBase, uintptr_t pKProcessAddress);
+	//static bool VirtualQueryEx(uintptr_t &directoryTableBase, uintptr_t &infoStructure);
 	static bool LeakKernelPointers(std::vector<uintptr_t> &pKernelPointers);
 	static uintptr_t FindDirectoryBase();
 

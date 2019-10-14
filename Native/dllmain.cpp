@@ -83,6 +83,7 @@ std::string getFileName(const std::string& s)
 extern "C" RC_Pointer RC_CallConv OpenRemoteProcess(RC_Pointer id, ProcessAccess desiredAccess)
 {
 	// Open the remote process with the desired access rights and return the handle to use with the other functions.
+	/*
 	DWORD access = STANDARD_RIGHTS_REQUIRED | PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION | SYNCHRONIZE;
 	switch (desiredAccess)
 	{
@@ -103,8 +104,9 @@ extern "C" RC_Pointer RC_CallConv OpenRemoteProcess(RC_Pointer id, ProcessAccess
 	{
 		return nullptr;
 	}
+	*/
 
-	return handle;
+	return id;
 }
 
 /// <summary>Queries if the process is valid.</summary>
@@ -125,6 +127,14 @@ extern "C" bool RC_CallConv IsProcessValid(RC_Pointer handle)
 	}
 
 	return retn == WAIT_TIMEOUT;
+	/*
+	if (handle == nullptr)
+	{
+		return false;
+	}
+	*/
+
+	return true;
 }
 
 /// <summary>Closes the handle to the remote process.</summary>
@@ -132,12 +142,20 @@ extern "C" bool RC_CallConv IsProcessValid(RC_Pointer handle)
 extern "C" void RC_CallConv CloseRemoteProcess(RC_Pointer handle)
 {
 	// Close the handle to the remote process.
+	
 	if (handle == nullptr)
 	{
 		return;
 	}
 
 	CloseHandle(handle);
+	
+	/*
+	if (handle == nullptr)
+	{
+		return;
+	}
+	*/
 }
 
 
@@ -168,10 +186,22 @@ extern "C" void RC_CallConv EnumerateProcesses(EnumerateProcessCallback callback
 		{
 			do
 			{
-				const auto process = OpenRemoteProcess(reinterpret_cast<RC_Pointer>(static_cast<size_t>(pe32.th32ProcessID)), ProcessAccess::Read);
-				if (IsProcessValid(process))
+
+				//const auto process = OpenRemoteProcess(reinterpret_cast<RC_Pointer>(static_cast<size_t>(pe32.th32ProcessID)), ProcessAccess::Read);
+
+				const auto handle_limited = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION , FALSE, static_cast<DWORD>(pe32.th32ProcessID));
+
+				if (handle_limited == nullptr || handle == INVALID_HANDLE_VALUE)
 				{
-					const auto platform = GetProcessPlatform(process);
+					continue;
+				}
+
+				if (pe32.th32ProcessID == 0 || pe32.th32ProcessID == 4)
+					continue;
+
+				if (pe32.th32ProcessID)
+				{
+					const auto platform = GetProcessPlatform(handle_limited);
 #ifdef RECLASSNET64
 					if (platform == Platform::X64)
 #else
@@ -180,16 +210,24 @@ extern "C" void RC_CallConv EnumerateProcesses(EnumerateProcessCallback callback
 					{
 						EnumerateProcessData data = { };
 						data.Id = pe32.th32ProcessID;
-						GetModuleFileNameExW(process, nullptr, reinterpret_cast<LPWSTR>(data.Path), PATH_MAXIMUM_LENGTH);
-						const auto name = fs::path(data.Path).filename().u16string();
+						//GetModuleFileNameExW(process, nullptr, reinterpret_cast<LPWSTR>(data.Path), PATH_MAXIMUM_LENGTH);
+						
+						//const auto name = fs::path(data.Path).filename().u16string();
+						const auto name = fs::path(pe32.szExeFile).filename().u16string();
+						const auto path = fs::path(pe32.szExeFile).u16string();
 						str16cpy(data.Name, name.c_str(), std::min<size_t>(name.length(), PATH_MAXIMUM_LENGTH - 1));
-
+						str16cpy(data.Path, path.c_str(), std::min<size_t>(path.length(), PATH_MAXIMUM_LENGTH - 1));
+						//data.Path = fs::path(pe32.szExeFile).u16string();
+						//str16cpy(data.Path, pe32.szExeFile, std::min<size_t>(pe32.szExeFile, PATH_MAXIMUM_LENGTH - 1));
+						//std::cout << "[-] data.Id " << data.Id  << std::endl;
+						//std::cout << "[-] data.Name " << name.c_str() << std::endl;
+						//std::cout << "[-] data.Path " << pe32.szExeFile <<  std::endl;
 						callbackProcess(&data);
 					}
 
 				}
 
-				CloseRemoteProcess(process);
+				CloseRemoteProcess(handle_limited);
 
 			} while (Process32NextW(handle, &pe32));
 		}
@@ -208,9 +246,9 @@ uintptr_t pBaseAddress = 0;
 /// <param name="process">The process handle obtained by OpenRemoteProcess.</param>
 /// <param name="callbackSection">The callback for a section.</param>
 /// <param name="callbackModule">The callback for a module.</param>
-void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer handle, EnumerateRemoteSectionsCallback callbackSection, EnumerateRemoteModulesCallback callbackModule)
+void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemoteSectionsCallback callbackSection, EnumerateRemoteModulesCallback callbackModule)
 {
-	// std::cout << "[.] EnumerateRemoteSectionsAndModules " << handle << std::endl;
+	 std::cout << "[.] EnumerateRemoteSectionsAndModules " << id << std::endl;
 	// Enumerate all sections and modules of the remote process and call the callback for them.
 	
 	if (callbackSection == nullptr && callbackModule == nullptr && !DriverReader::DTBTargetProcess)
@@ -224,7 +262,11 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer handle, EnumerateR
 	MEMORY_BASIC_INFORMATION memInfo = { };
 	memInfo.RegionSize = 0x1000;
 	size_t address = 0;
-	while (VirtualQueryEx(handle, reinterpret_cast<LPCVOID>(address), &memInfo, sizeof(MEMORY_BASIC_INFORMATION)) != 0 && address + memInfo.RegionSize > address)
+
+	const auto handle_limited = OpenProcess( PROCESS_QUERY_INFORMATION, FALSE, reinterpret_cast<DWORD>(id));
+
+
+	while (VirtualQueryEx(handle_limited, reinterpret_cast<LPCVOID>(address), &memInfo, sizeof(MEMORY_BASIC_INFORMATION)) != 0 && address + memInfo.RegionSize > address)
 	{
 		if (memInfo.State == MEM_COMMIT)
 		{
@@ -263,8 +305,9 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer handle, EnumerateR
 		}
 		address = reinterpret_cast<size_t>(memInfo.BaseAddress) + memInfo.RegionSize;
 	}
+	CloseRemoteProcess(handle_limited);
 
-	const auto handle2 = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetProcessId(handle));
+	const auto handle2 = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, reinterpret_cast<DWORD>(id));
 	if (handle2 != INVALID_HANDLE_VALUE)
 	{
 		MODULEENTRY32W me32 = {};
@@ -359,17 +402,22 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer handle, EnumerateR
 /// <param name="offset">The offset into the buffer.</param>
 /// <param name="size">The number of bytes to read.</param>
 /// <returns>True if it succeeds, false if it fails.</returns>
-extern "C" bool RC_CallConv ReadRemoteMemory(RC_Pointer handle, RC_Pointer address, RC_Pointer buffer, int offset, int size)
+extern "C" bool RC_CallConv ReadRemoteMemory(RC_Pointer id, RC_Pointer address, RC_Pointer buffer, int offset, int size)
 {
-	// Read the memory of the remote process into the buffer.
-	
-	if (handle)
+	// Read the memory of the remote process into the buffer.	
+	if (id)
 	{
 		//TCHAR Buffer[MAX_PATH];
 		//std::cout << "\t[.] handle " << handle << std::endl;
 		//std::cout << "\t[.] targetProc " << DriverReader::targetProc << std::endl;
+		const auto handle_limited = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION , FALSE, reinterpret_cast<DWORD>(id));
 
-		if (GetProcessImageFileNameA(handle, DriverReader::targetProc, sizeof(DriverReader::targetProc)))
+		if (handle_limited == nullptr)
+		{
+			return false;
+		}
+
+		if (GetProcessImageFileNameA(handle_limited, DriverReader::targetProc, sizeof(DriverReader::targetProc)))
 		{
 			//std::cout << "\t[.] targetProc " << DriverReader::targetProc << std::endl;
 			strcpy(DriverReader::targetProc,getFileName(DriverReader::targetProc).c_str());
@@ -379,7 +427,7 @@ extern "C" bool RC_CallConv ReadRemoteMemory(RC_Pointer handle, RC_Pointer addre
 		{
 			//std::cout << "\t[.] targetProc failed: 0x" << std::hex << GetLastError() << std::endl;
 		}
-		//CloseHandle(handle);
+		CloseHandle(handle_limited);
 	}
 
 
@@ -407,8 +455,8 @@ extern "C" bool RC_CallConv ReadRemoteMemory(RC_Pointer handle, RC_Pointer addre
 	//std::cout << "[+] directoryTableBase" << directoryTableBase << std::endl;
 	//std::cout << "[+] pKProcess" << pKProcess << std::endl;
 	//std::cout << "[+] pBaseAddress" << pBaseAddress << std::endl;
-	//std::cout << "[+] address" << address << std::endl;
-	//std::cout << "[+] size" << size << std::endl;
+	std::cout << "[+] address" << address << std::endl;
+	std::cout << "[+] size" << size << std::endl;
 	
 	buffer = reinterpret_cast<RC_Pointer>(reinterpret_cast<uintptr_t>(buffer) + offset);
 	//std::cout << "[+] buffer" << buffer << std::endl;
@@ -419,12 +467,6 @@ extern "C" bool RC_CallConv ReadRemoteMemory(RC_Pointer handle, RC_Pointer addre
 	{
 		return true;
 	}
-
-	/*
-	if (ReadProcessMemory(handle, address, buffer, size, &numberOfBytesRead) && size == numberOfBytesRead)
-	{
-		return true;
-	}*/
 
 	return false;
 }
