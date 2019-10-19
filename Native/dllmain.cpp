@@ -1,5 +1,6 @@
 #include <cstdint>
 
+// Remove annoying error
 #if (_MSC_VER >= 1915)
 #define no_init_all deprecated
 #endif
@@ -18,9 +19,10 @@
 #include "DriverReader.h"
 namespace fs = std::experimental::filesystem;
 
-#if (_MSC_VER >= 1915)
-#define no_init_all deprecated
-#endif
+// Variables required for the Kernel Driver Exploit ;)
+uintptr_t directoryTableBase = 0;
+uintptr_t pKProcess = 0;
+uintptr_t pBaseAddress = 0;
 
 
 enum class Platform
@@ -82,39 +84,18 @@ std::string getFileName(const std::string& s)
 /// <returns>A handle to the remote process or nullptr if an error occured.</returns>
 extern "C" RC_Pointer RC_CallConv OpenRemoteProcess(RC_Pointer id, ProcessAccess desiredAccess)
 {
-	// Open the remote process with the desired access rights and return the handle to use with the other functions.
-	/*
-	DWORD access = STANDARD_RIGHTS_REQUIRED | PROCESS_TERMINATE | PROCESS_QUERY_INFORMATION | SYNCHRONIZE;
-	switch (desiredAccess)
-	{
-	case ProcessAccess::Read:
-		access |= PROCESS_VM_READ;
-		break;
-	case ProcessAccess::Write:
-		access |= PROCESS_VM_OPERATION | PROCESS_VM_WRITE;
-		break;
-	case ProcessAccess::Full:
-		access |= PROCESS_VM_READ | PROCESS_VM_OPERATION | PROCESS_VM_WRITE;
-		break;
-	}
-
-	const auto handle = OpenProcess(access, FALSE, static_cast<DWORD>(reinterpret_cast<size_t>(id)));
-
-	if (handle == nullptr || handle == INVALID_HANDLE_VALUE)
-	{
-		return nullptr;
-	}
-	*/
-
+	// BEFORE: Open the remote process with the desired access rights and return the handle to use with the other functions.
+	// NOW: We are just returning the ID to the process instead. Now each methods takes care of resolving this ID (PID) to the respective process.
+	// We need to do this to stop using privileged HANDLEs to the process
 	return id;
 }
 
 /// <summary>Queries if the process is valid.</summary>
-/// <param name="handle">The process handle obtained by OpenRemoteProcess.</param>
+/// <param name="id">The process handle (now PID) obtained by OpenRemoteProcess.</param>
 /// <returns>True if the process is valid, false if not.</returns>
-extern "C" bool RC_CallConv IsProcessValid(RC_Pointer handle)
+extern "C" bool RC_CallConv IsProcessValid(RC_Pointer id)
 {
-	// Check if the handle is valid.
+	/*
 	if (handle == nullptr)
 	{
 		return false;
@@ -127,12 +108,14 @@ extern "C" bool RC_CallConv IsProcessValid(RC_Pointer handle)
 	}
 
 	return retn == WAIT_TIMEOUT;
-	/*
-	if (handle == nullptr)
+	*/
+
+	// BEFORE: Check if the handle is valid.
+	// NOW: If is not null it is enough, we are using the PID now instead of a HANDLE
+	if (id == nullptr)
 	{
 		return false;
 	}
-	*/
 
 	return true;
 }
@@ -141,20 +124,17 @@ extern "C" bool RC_CallConv IsProcessValid(RC_Pointer handle)
 /// <param name="handle">The process handle obtained by OpenRemoteProcess.</param>
 extern "C" void RC_CallConv CloseRemoteProcess(RC_Pointer handle)
 {
-	// Close the handle to the remote process.
-	
-	if (handle == nullptr)
-	{
-		return;
-	}
-
-	CloseHandle(handle);
+	// BEFORE: Close the handle to the remote process.
+	// NOW: We don't have a HANDLE so it is just a fake function
+	return;
 	
 	/*
 	if (handle == nullptr)
 	{
 		return;
 	}
+
+	CloseHandle(handle);
 	*/
 }
 
@@ -163,13 +143,12 @@ extern "C" void RC_CallConv CloseRemoteProcess(RC_Pointer handle)
 /// <param name="callbackProcess">The callback for a process.</param>
 extern "C" void RC_CallConv EnumerateProcesses(EnumerateProcessCallback callbackProcess)
 {
-	// With this trick we'll be able to print content to the console, and if we have luck we could get information printed by the game.
+	// With this trick we'll be able to print content to the console.
 	AllocConsole();
 	SetConsoleTitle("Debug");
 	freopen("CONOUT$", "w", stdout);
 	freopen("CONOUT$", "w", stderr);
 	freopen("CONIN$", "r", stdin);
-	
 	
 	// Enumerate all processes with the current plattform (x86/x64) and call the callback.
 	if (callbackProcess == nullptr)
@@ -186,9 +165,8 @@ extern "C" void RC_CallConv EnumerateProcesses(EnumerateProcessCallback callback
 		{
 			do
 			{
-
-				//const auto process = OpenRemoteProcess(reinterpret_cast<RC_Pointer>(static_cast<size_t>(pe32.th32ProcessID)), ProcessAccess::Read);
-
+				// TODO: Remove this so we don't need to open a HANDLE to the game, in this case it is just a HANDLE with very limited privileges. Most AC seem to allow this kind of HANDLE.
+				// There should be a better way to figure out the platform of the process (x86/x64)
 				const auto handle_limited = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION , FALSE, static_cast<DWORD>(pe32.th32ProcessID));
 
 				if (handle_limited == nullptr || handle == INVALID_HANDLE_VALUE)
@@ -196,12 +174,14 @@ extern "C" void RC_CallConv EnumerateProcesses(EnumerateProcessCallback callback
 					continue;
 				}
 
+				// if 0 or SYSTEM process, just skip it.
 				if (pe32.th32ProcessID == 0 || pe32.th32ProcessID == 4)
 					continue;
 
 				if (pe32.th32ProcessID)
 				{
 					const auto platform = GetProcessPlatform(handle_limited);
+					CloseRemoteProcess(handle_limited);
 #ifdef RECLASSNET64
 					if (platform == Platform::X64)
 #else
@@ -210,24 +190,18 @@ extern "C" void RC_CallConv EnumerateProcesses(EnumerateProcessCallback callback
 					{
 						EnumerateProcessData data = { };
 						data.Id = pe32.th32ProcessID;
-						//GetModuleFileNameExW(process, nullptr, reinterpret_cast<LPWSTR>(data.Path), PATH_MAXIMUM_LENGTH);
-						
-						//const auto name = fs::path(data.Path).filename().u16string();
+
 						const auto name = fs::path(pe32.szExeFile).filename().u16string();
 						const auto path = fs::path(pe32.szExeFile).u16string();
 						str16cpy(data.Name, name.c_str(), std::min<size_t>(name.length(), PATH_MAXIMUM_LENGTH - 1));
 						str16cpy(data.Path, path.c_str(), std::min<size_t>(path.length(), PATH_MAXIMUM_LENGTH - 1));
-						//data.Path = fs::path(pe32.szExeFile).u16string();
-						//str16cpy(data.Path, pe32.szExeFile, std::min<size_t>(pe32.szExeFile, PATH_MAXIMUM_LENGTH - 1));
-						//std::cout << "[-] data.Id " << data.Id  << std::endl;
-						//std::cout << "[-] data.Name " << name.c_str() << std::endl;
-						//std::cout << "[-] data.Path " << pe32.szExeFile <<  std::endl;
+
 						callbackProcess(&data);
 					}
 
 				}
 
-				CloseRemoteProcess(handle_limited);
+				
 
 			} while (Process32NextW(handle, &pe32));
 		}
@@ -238,9 +212,6 @@ extern "C" void RC_CallConv EnumerateProcesses(EnumerateProcessCallback callback
 }
 
 
-uintptr_t directoryTableBase = 0;
-uintptr_t pKProcess = 0;
-uintptr_t pBaseAddress = 0;
 
 /// <summary>Enumerate all sections and modules of the remote process.</summary>
 /// <param name="process">The process handle obtained by OpenRemoteProcess.</param>
@@ -248,7 +219,7 @@ uintptr_t pBaseAddress = 0;
 /// <param name="callbackModule">The callback for a module.</param>
 void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemoteSectionsCallback callbackSection, EnumerateRemoteModulesCallback callbackModule)
 {
-	 std::cout << "[.] EnumerateRemoteSectionsAndModules " << id << std::endl;
+	 std::cout << "[+] EnumerateRemoteSectionsAndModules " << id << std::endl;
 	// Enumerate all sections and modules of the remote process and call the callback for them.
 	
 	if (callbackSection == nullptr && callbackModule == nullptr && !DriverReader::DTBTargetProcess)
@@ -257,25 +228,28 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 		return;
 	}
 
+	// We are going to store all the sections here
 	std::vector<EnumerateRemoteSectionData> sections;
 
 	MEMORY_BASIC_INFORMATION memInfo = { };
 	memInfo.RegionSize = 0x1000;
 	size_t address = 0;
 
+
+	// TODO: Remove this so we don't need to open a HANDLE to the game, in this case it is just a HANDLE with very limited privileges. Most AC seem to allow this kind of HANDLE.
 	const auto handle_limited = OpenProcess( PROCESS_QUERY_INFORMATION, FALSE, reinterpret_cast<DWORD>(id));
 
-
+	// TODO: There is a possible option that would allow us to avoid doing this: Walk VadRoot AVL tree from physical memory
 	while (VirtualQueryEx(handle_limited, reinterpret_cast<LPCVOID>(address), &memInfo, sizeof(MEMORY_BASIC_INFORMATION)) != 0 && address + memInfo.RegionSize > address)
 	{
 		if (memInfo.State == MEM_COMMIT)
 		{
 			EnumerateRemoteSectionData section = {};
+			// Storing the Base Address and the RegionSize
 			section.BaseAddress = memInfo.BaseAddress;
 			section.Size = memInfo.RegionSize;
 
-			//std::cout << "[-] section.BaseAddress failed" << section.BaseAddress << std::endl;
-
+			// Storing the Protection for this particular section
 			section.Protection = SectionProtection::NoAccess;
 			if ((memInfo.Protect & PAGE_EXECUTE) == PAGE_EXECUTE) section.Protection |= SectionProtection::Execute;
 			if ((memInfo.Protect & PAGE_EXECUTE_READ) == PAGE_EXECUTE_READ) section.Protection |= SectionProtection::Execute | SectionProtection::Read;
@@ -286,6 +260,7 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 			if ((memInfo.Protect & PAGE_WRITECOPY) == PAGE_WRITECOPY) section.Protection |= SectionProtection::Read | SectionProtection::CopyOnWrite;
 			if ((memInfo.Protect & PAGE_GUARD) == PAGE_GUARD) section.Protection |= SectionProtection::Guard;
 
+			// Storing the memory Type
 			switch (memInfo.Type)
 			{
 			case MEM_IMAGE:
@@ -299,10 +274,13 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 				break;
 			}
 
+			// Storing the category
 			section.Category = section.Type == SectionType::Private ? SectionCategory::HEAP : SectionCategory::Unknown;
 
+			// Pushing this section instance into the vector
 			sections.push_back(std::move(section));
 		}
+		// Moving to the next section
 		address = reinterpret_cast<size_t>(memInfo.BaseAddress) + memInfo.RegionSize;
 	}
 	CloseRemoteProcess(handle_limited);
@@ -336,14 +314,11 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 					IMAGE_DOS_HEADER DosHdr = {};
 					IMAGE_NT_HEADERS NtHdr = {};
 
-					//ReadRemoteMemory(handle, me32.modBaseAddr, &DosHdr, 0, sizeof(IMAGE_DOS_HEADER));
-					//ReadRemoteMemory(handle, me32.modBaseAddr + DosHdr.e_lfanew, &NtHdr, 0, sizeof(IMAGE_NT_HEADERS));
-
 					DriverReader::ReadVirtualMemory(directoryTableBase, reinterpret_cast<uintptr_t>(me32.modBaseAddr), &DosHdr, sizeof(IMAGE_DOS_HEADER), NULL);
 					DriverReader::ReadVirtualMemory(directoryTableBase, reinterpret_cast<uintptr_t>(me32.modBaseAddr + DosHdr.e_lfanew), &NtHdr, sizeof(IMAGE_NT_HEADERS), NULL);
 
 					std::vector<IMAGE_SECTION_HEADER> sectionHeaders(NtHdr.FileHeader.NumberOfSections);
-					//ReadRemoteMemory(handle, me32.modBaseAddr + DosHdr.e_lfanew + sizeof(IMAGE_NT_HEADERS), sectionHeaders.data(), 0, NtHdr.FileHeader.NumberOfSections * sizeof(IMAGE_SECTION_HEADER));
+					
 					DriverReader::ReadVirtualMemory(directoryTableBase, reinterpret_cast<uintptr_t>(me32.modBaseAddr + DosHdr.e_lfanew + sizeof(IMAGE_NT_HEADERS)), sectionHeaders.data(), NtHdr.FileHeader.NumberOfSections * sizeof(IMAGE_SECTION_HEADER), NULL);
 
 					for (auto i = 0; i < NtHdr.FileHeader.NumberOfSections; ++i)
@@ -407,9 +382,7 @@ extern "C" bool RC_CallConv ReadRemoteMemory(RC_Pointer id, RC_Pointer address, 
 	// Read the memory of the remote process into the buffer.	
 	if (id)
 	{
-		//TCHAR Buffer[MAX_PATH];
-		//std::cout << "\t[.] handle " << handle << std::endl;
-		//std::cout << "\t[.] targetProc " << DriverReader::targetProc << std::endl;
+		// I'm using a limited HANDLE to get the name of the executable, is this necessary? ;(
 		const auto handle_limited = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION , FALSE, reinterpret_cast<DWORD>(id));
 
 		if (handle_limited == nullptr)
@@ -419,9 +392,7 @@ extern "C" bool RC_CallConv ReadRemoteMemory(RC_Pointer id, RC_Pointer address, 
 
 		if (GetProcessImageFileNameA(handle_limited, DriverReader::targetProc, sizeof(DriverReader::targetProc)))
 		{
-			//std::cout << "\t[.] targetProc " << DriverReader::targetProc << std::endl;
 			strcpy(DriverReader::targetProc,getFileName(DriverReader::targetProc).c_str());
-			//std::cout << "\t[.] targetProc " << DriverReader::targetProc << std::endl;
 		}
 		else
 		{
