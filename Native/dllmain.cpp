@@ -369,24 +369,16 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 	
 }
 
-
-/// <summary>Reads memory of the remote process.</summary>
-/// <param name="handle">The process handle obtained by OpenRemoteProcess.</param>
-/// <param name="address">The address to read from.</param>
-/// <param name="buffer">The buffer to read into.</param>
-/// <param name="offset">The offset into the buffer.</param>
-/// <param name="size">The number of bytes to read.</param>
-/// <returns>True if it succeeds, false if it fails.</returns>
-extern "C" bool RC_CallConv ReadRemoteMemory(RC_Pointer id, RC_Pointer address, RC_Pointer buffer, int offset, int size)
+bool CheckKernelStatus(RC_Pointer id)
 {
-	// Read the memory of the remote process into the buffer.	
-	if (id)
+if (id)
 	{
 		// I'm using a limited HANDLE to get the name of the executable, is this necessary? ;(
 		const auto handle_limited = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION , FALSE, reinterpret_cast<DWORD>(id));
 
 		if (handle_limited == nullptr)
 		{
+			std::cout << "[-] Unable to get executable name." << std::endl;
 			return false;
 		}
 
@@ -396,7 +388,7 @@ extern "C" bool RC_CallConv ReadRemoteMemory(RC_Pointer id, RC_Pointer address, 
 		}
 		else
 		{
-			//std::cout << "\t[.] targetProc failed: 0x" << std::hex << GetLastError() << std::endl;
+			std::cout << "\t[.] targetProc failed: 0x" << std::hex << GetLastError() << std::endl;
 		}
 		CloseHandle(handle_limited);
 	}
@@ -404,6 +396,7 @@ extern "C" bool RC_CallConv ReadRemoteMemory(RC_Pointer id, RC_Pointer address, 
 
 	if (strcmp(DriverReader::targetProc, DriverReader::previousTargetProc) != 0)
 	{
+		std::cout << "[.] Process context changed." << std::endl;
 		if (DriverReader::getDeviceHandle("\\\\.\\GIO"))
 		{
 			std::cout << "[-] Driver not loaded" << std::endl;
@@ -418,26 +411,43 @@ extern "C" bool RC_CallConv ReadRemoteMemory(RC_Pointer id, RC_Pointer address, 
 		if (!DriverReader::ObtainKProcessInfo(directoryTableBase, pBaseAddress))
 		{
 			std::cout << "[-] ObtainKProcessInfo failed" << std::endl;
+			return false;
 		}
 
 	}
+	return true;
+}
 
+
+/// <summary>Reads memory of the remote process.</summary>
+/// <param name="handle">The process handle obtained by OpenRemoteProcess.</param>
+/// <param name="address">The address to read from.</param>
+/// <param name="buffer">The buffer to read into.</param>
+/// <param name="offset">The offset into the buffer.</param>
+/// <param name="size">The number of bytes to read.</param>
+/// <returns>True if it succeeds, false if it fails.</returns>
+extern "C" bool RC_CallConv ReadRemoteMemory(RC_Pointer id, RC_Pointer address, RC_Pointer buffer, int offset, int size)
+{
+	// Read the memory of the remote process into the buffer.	
+	if (!CheckKernelStatus(id))
+		return false;
 	//std::cout << "[+] Reading ########################################" << std::endl;
 	//std::cout << "[+] directoryTableBase" << directoryTableBase << std::endl;
 	//std::cout << "[+] pKProcess" << pKProcess << std::endl;
 	//std::cout << "[+] pBaseAddress" << pBaseAddress << std::endl;
-	std::cout << "[+] address" << address << std::endl;
-	std::cout << "[+] size" << size << std::endl;
+	//std::cout << "[+] address" << address << std::endl;
+	//std::cout << "[+] size" << size << std::endl;
 	
 	buffer = reinterpret_cast<RC_Pointer>(reinterpret_cast<uintptr_t>(buffer) + offset);
 	//std::cout << "[+] buffer" << buffer << std::endl;
-	//std::cout << "[+] buffer" << DriverReader::DTBTargetProcess << std::endl;
+	//std::cout << "[+] DriverReader::DTBTargetProcess " << DriverReader::DTBTargetProcess << std::endl;
 
 	SIZE_T numberOfBytesRead;
 	if (DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, reinterpret_cast<uintptr_t>(address), buffer, size, &numberOfBytesRead))
 	{
 		return true;
 	}
+	std::cout << "[-] RVM failed" << std::endl;
 
 	return false;
 }
@@ -449,9 +459,20 @@ extern "C" bool RC_CallConv ReadRemoteMemory(RC_Pointer id, RC_Pointer address, 
 /// <param name="offset">The offset into the buffer.</param>
 /// <param name="size">The number of bytes to write.</param>
 /// <returns>True if it succeeds, false if it fails.</returns>
-extern "C" bool RC_CallConv WriteRemoteMemory(RC_Pointer handle, RC_Pointer address, RC_Pointer buffer, int offset, int size)
+extern "C" bool RC_CallConv WriteRemoteMemory(RC_Pointer id, RC_Pointer address, RC_Pointer buffer, int offset, int size)
 {
+	if (!CheckKernelStatus(id))
+		return false;
+
+
 	// Write the buffer into the memory of the remote process.
+    buffer = reinterpret_cast<RC_Pointer>(reinterpret_cast<uintptr_t>(buffer) + offset);
+
+	SIZE_T numberOfBytesWritten;
+	if (DriverReader::WriteVirtualMemory(DriverReader::DTBTargetProcess, reinterpret_cast<uintptr_t>(address), buffer, size, &numberOfBytesWritten))
+	{
+		return true;
+	}
 
 	return false;
 }

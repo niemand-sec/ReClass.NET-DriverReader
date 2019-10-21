@@ -25,6 +25,8 @@
 #define OFFSET_IMAGEFILENAME 0x450
 #define OFFSET_PRIORITYCLASS 0x45f
 
+
+
 // Structure of MAP
 typedef struct _READ_REQUEST {
 	DWORD InterfaceType;
@@ -71,6 +73,7 @@ class DriverReader
 public:
 	static int getDeviceHandle(LPTSTR name);
 	static bool ReadPhyMemory(uintptr_t physicalAddress, LPVOID  lpBuffer, SIZE_T  nSize, SIZE_T  *lpNumberOfBytesRead);
+	static bool WriteVirtualMemory(uint64_t directoryTableBase, uintptr_t virtualAddress, LPVOID  lpBuffer, SIZE_T  nSize, SIZE_T  *lpNumberOfBytesWritten);
 	static bool ReadVirtualMemory(uint64_t directoryTableBase, uintptr_t virtualAddress, LPCVOID lpBuffer, SIZE_T  nSize, SIZE_T  *lpNumberOfBytesRead);
 	static uintptr_t ObtainKProcessPointer(uint64_t directoryTableBase, std::vector<uintptr_t> pKernelPointers);
 	static uintptr_t GetKProcess(uintptr_t &directoryTableBase);

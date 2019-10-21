@@ -153,13 +153,40 @@ uint64_t VAtoPhylAddress(uintptr_t directoryTableBase, LPVOID virtualAddress)
 	return (PTE & 0xFFFFFFFFFF000) + (va & 0xFFF);
 }
 
+
+// Write a VirtualMemory (Kernel or Usermode)
+bool DriverReader::WriteVirtualMemory(uint64_t directoryTableBase, uintptr_t virtualAddress, LPVOID  lpBuffer, SIZE_T  nSize, SIZE_T  *lpNumberOfBytesWritten)
+{
+
+	// Translate Virtual to physical
+	uint64_t physicalAddress = VAtoPhylAddress(directoryTableBase,  (LPVOID) virtualAddress);
+
+	// Control if physicalAddress is valid
+	if (!physicalAddress)
+		return false;
+
+	// Read physical memory
+	uint64_t memory = fn_mapPhysical(physicalAddress, nSize);
+
+	if (!memory)
+		return false;
+
+	// Copy the new value to the already mapped physical memory
+	memcpy((void*)memory, (const void*)lpBuffer , nSize);
+
+	// Free mapped memory so we can persist the changes
+	fn_unmapPhysical(memory);
+
+	return true;
+}
+
 bool DriverReader::ReadVirtualMemory(uint64_t directoryTableBase, uintptr_t virtualAddress, LPCVOID lpBuffer, SIZE_T  nSize, SIZE_T  *lpNumberOfBytesRead)
 {
 	//std::cout << virtualAddress << std::endl;
 	// Translate Virtual to physical
 	uint64_t physicalAddress = VAtoPhylAddress(directoryTableBase, (LPVOID)virtualAddress);
 
-	//std::cout << physicalAddress << std::endl;
+	// std::cout << physicalAddress << std::endl;
 	// Control if physicalAddress is valid
 	if (!physicalAddress)
 		return false;
