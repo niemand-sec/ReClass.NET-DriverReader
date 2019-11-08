@@ -1,11 +1,13 @@
 #include "DriverReader.h"
 
+
 HANDLE DriverReader::hDeviceDrv = NULL;
 char DriverReader::targetProc[];
 char DriverReader::previousTargetProc[];
 uintptr_t DriverReader::DTBTargetProcess = 0;
 uintptr_t DriverReader::virtualSizeTargetProcess = 0;
 uintptr_t DriverReader::pBaseAddressTargetProcess = 0;
+uintptr_t DriverReader::pVadRootTargetProcess = 0;
 
 int DriverReader::getDeviceHandle(LPTSTR name)
 {
@@ -456,5 +458,140 @@ bool DriverReader::ObtainKProcessInfo(uintptr_t &directoryTableBase, uintptr_t p
 	}
 	std::cout << "\t[+] VirtualSize: 0x" << std::hex << DriverReader::virtualSizeTargetProcess << std::endl;
 
+if (!DriverReader::ReadVirtualMemory(directoryTableBase, pKProcessAddress + OFFSET_VADROOT,
+		&(DriverReader::pVadRootTargetProcess), sizeof(uintptr_t), NULL))
+	{
+		std::cout << "[-] Failed trying to obtain the VadRoot." << std::endl;
+		return false;
+	}
+	std::cout << "\t[+] VadRoot: 0x" << std::hex << DriverReader::pVadRootTargetProcess << std::endl;
+
+
 	return true;
 }
+
+
+
+
+
+// Functions that will help us to dump the VadRoot AVL Tree, which has all the memory information about a particular process.
+
+EnumerateRemoteSectionData GetVadNodeInfo(uintptr_t directoryTableBase, uintptr_t node)
+{
+/*
+#define OFFSET_STARTINGVPN 0x018
+#define OFFSET_ENDINGVPN 0x01c
+#define OFFSET_STARTINGVPNHIGH 0x020
+#define OFFSET_ENDINGVPNHIGH 0x021
+*/
+	uint64_t startingVPNLow = 0;
+	uint64_t endingVPNLow = 0;
+	uint64_t startingVPNHigh = 0;
+	uint64_t endingVPNHigh = 0;
+	unsigned long u = 0;
+	DriverReader::ReadVirtualMemory(directoryTableBase, node + OFFSET_STARTINGVPN, &startingVPNLow, sizeof(uint32_t), NULL);
+	DriverReader::ReadVirtualMemory(directoryTableBase, node + OFFSET_ENDINGVPN, &endingVPNLow, sizeof(uint32_t), NULL);
+	DriverReader::ReadVirtualMemory(directoryTableBase, node + OFFSET_STARTINGVPNHIGH, &startingVPNHigh, sizeof(uint8_t), NULL);
+	DriverReader::ReadVirtualMemory(directoryTableBase, node + OFFSET_ENDINGVPNHIGH, &endingVPNHigh, sizeof(uint8_t), NULL);
+	// Reading the unsigned long u from MMVAD_SHORT
+	DriverReader::ReadVirtualMemory(directoryTableBase, node + OFFSET_MMVAD_SHORT_U, &u, sizeof(unsigned long), NULL);
+
+	//uintptr_t startingVPN = (long long) startingVPNHigh << 32 | startingVPNLow;
+	uint64_t startingVPN = (startingVPNLow << 12) | (startingVPNHigh << 44);// startingVPNHigh << 32 | startingVPNLow;
+	//uintptr_t endingVPN = (long long) endingVPNHigh << 32 | endingVPNLow;
+	uint64_t endingVPN = ( (endingVPNLow + 1) << 12 | (endingVPNHigh << 44));
+	std::cout << "#################" << std::endl;
+	//std::cout << startingVPNHigh << std::endl;
+	//std::cout << startingVPNLow << std::endl;
+	std::cout << startingVPN << std::endl;
+	//std::cout << endingVPNHigh << std::endl;
+	//std::cout << endingVPNLow << std::endl;
+	std::cout << endingVPN << std::endl;
+	//std::cout << endingVPN - startingVPN << std::endl;
+	EnumerateRemoteSectionData section = {};
+	section.BaseAddress = (void *)startingVPN;
+	section.Size = endingVPN - startingVPN;
+
+	section.Protection = SectionProtection::NoAccess;
+	// To get the Protection Flag we need first to obtain the index of the protection from the _MMVAD_FLAGS->Protection
+	//		[+0x000 ( 2: 0)] VadType          : 0x2 [Type: unsigned long]
+    //		[+0x000 ( 7: 3)] Protection       : 0x7 [Type: unsigned long]
+    //		[+0x000 (13: 8)] PreferredNode    : 0x0 [Type: unsigned long]
+    //		[+0x000 (14:14)] NoChange         : 0x0 [Type: unsigned long]
+    //		[+0x000 (15:15)] PrivateMemory    : 0x0 [Type: unsigned long]
+	//    0xF8 == 11111000  <----- Mask to extract bits 7:3
+	DWORD protection = ( u >> 3) & 0x1F;
+	protection = ProtectionFlags[protection];
+
+	if ((protection & PAGE_EXECUTE) == PAGE_EXECUTE) section.Protection |= SectionProtection::Execute;
+	if ((protection & PAGE_EXECUTE_READ) == PAGE_EXECUTE_READ) section.Protection |= SectionProtection::Execute | SectionProtection::Read;
+	if ((protection & PAGE_EXECUTE_READWRITE) == PAGE_EXECUTE_READWRITE) section.Protection |= SectionProtection::Execute | SectionProtection::Read | SectionProtection::Write;
+	if ((protection & PAGE_EXECUTE_WRITECOPY) == PAGE_EXECUTE_WRITECOPY) section.Protection |= SectionProtection::Execute | SectionProtection::Read | SectionProtection::CopyOnWrite;
+	if ((protection & PAGE_READONLY) == PAGE_READONLY) section.Protection |= SectionProtection::Read;
+	if ((protection & PAGE_READWRITE) == PAGE_READWRITE) section.Protection |= SectionProtection::Read | SectionProtection::Write;
+	if ((protection & PAGE_WRITECOPY) == PAGE_WRITECOPY) section.Protection |= SectionProtection::Read | SectionProtection::CopyOnWrite;
+	if ((protection & PAGE_GUARD) == PAGE_GUARD) section.Protection |= SectionProtection::Guard;
+
+	//  [+0x000 (15:15)] PrivateMemory    : 0x0 [Type: unsigned long]
+    //  [+0x000 (16:16)] PrivateFixup     : 0x0 [Type: unsigned long]
+    //  [+0x000 (17:17)] ManySubsections  : 0x0 [Type: unsigned long]
+    //  [+0x000 (18:18)] Enclave          : 0x0 [Type: unsigned long]
+	//  We need the memory type, we can check with the bit 15 if its private memory
+	//
+
+
+	return section;
+}
+
+
+void DriverReader::WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start, EnumerateRemoteSectionsCallback callbackSection)
+{
+
+	if (start == NULL)
+		return;
+	
+	//std::cout << "Start " << start << std::endl;
+	//Sleep(3000);
+	// Read Left pointer
+	// ReadVirtualMemory
+	uintptr_t left = 0;
+	//std::cout << "DTB " << DriverReader::DTBTargetProcess << std::endl;
+	DriverReader::ReadVirtualMemory(directoryTableBase, start, &left, sizeof(uintptr_t), NULL);
+	//std::cout << "Left " << left << std::endl;
+
+	//Sleep(3000);
+
+	WalkVadADLTree(directoryTableBase,left, callbackSection);
+
+
+	//Sleep(3000);
+	// Read right pointer
+	// ReadVirtualMemory
+	uintptr_t right = 0;
+	DriverReader::ReadVirtualMemory(directoryTableBase, start + sizeof(uintptr_t), &right, sizeof(uintptr_t), NULL);
+
+	//std::cout << "Right " << right << std::endl;
+
+	//Sleep(3000);
+	EnumerateRemoteSectionData section = GetVadNodeInfo(directoryTableBase, start);
+
+	callbackSection(&section);
+
+	WalkVadADLTree(directoryTableBase,right, callbackSection);
+
+
+}
+	
+	
+   /*int i;
+   if (p != NULL) {
+      show(p->r, l+ 1);
+      cout<<" ";
+      if (p == r)
+         cout << "Root -> ";
+      for (i = 0; i < l&& p != r; i++)
+         cout << " ";
+         cout << p->d;
+         show(p->l, l + 1);
+   }*/
+//}

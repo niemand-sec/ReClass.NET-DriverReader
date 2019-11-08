@@ -5,6 +5,7 @@
 #include <Windows.h>
 #include <winternl.h>
 
+#include <ReClassNET_Plugin.hpp>
 #pragma comment( lib, "ntdll.lib" )
 
 #define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
@@ -15,7 +16,7 @@
 #define IOCTL_GIO_MEMCPY 0xC3502808
 
 
-// Kernel offsets
+// Kernel offsets (used for Read Write kernel memory) w10 1607
 #define OFFSET_DIRECTORYTABLEBASE 0x028
 #define OFFSET_UNIQUEPROCESSID 0x2e8
 #define OFFSET_ACTIVEPROCESSLINKS 0x2f0
@@ -25,6 +26,64 @@
 #define OFFSET_IMAGEFILENAME 0x450
 #define OFFSET_PRIORITYCLASS 0x45f
 
+// Kernel offsets (used for enumerate modules and sections of a process using kernel memory) w10 1607
+#define OFFSET_VADROOT 0x620
+/*
+(*((ntkrnlmp!_MMVAD_SHORT *)0xffffb803e0fa73a0))                 [Type: _MMVAD_SHORT]
+    [+0x000] VadNode          [Type: _RTL_BALANCED_NODE]
+    [+0x000] NextVad          : 0xffffb803dfc39240 [Type: _MMVAD_SHORT *]
+    [+0x018] StartingVpn      : 0x96ee040 [Type: unsigned long]
+    [+0x01c] EndingVpn        : 0x96ee13f [Type: unsigned long]
+	[+0x020] StartingVpnHigh  : 0x0 [Type: unsigned char]
+    [+0x021] EndingVpnHigh    : 0x0 [Type: unsigned char]
+
+*/
+#define OFFSET_STARTINGVPN 0x018
+#define OFFSET_ENDINGVPN 0x01c
+#define OFFSET_STARTINGVPNHIGH 0x020
+#define OFFSET_ENDINGVPNHIGH 0x021
+#define OFFSET_MMVAD_SHORT_U 0x030
+#define OFFSET_
+
+
+enum class ejemplo
+{
+};
+
+const ULONG ProtectionFlags[] = {
+	PAGE_NOACCESS,
+	PAGE_READONLY,
+	PAGE_EXECUTE,
+	PAGE_EXECUTE_READ,
+	PAGE_READWRITE,
+	PAGE_WRITECOPY,
+	PAGE_EXECUTE_READWRITE,
+	PAGE_EXECUTE_WRITECOPY,
+	PAGE_NOACCESS,
+	PAGE_NOCACHE | PAGE_READONLY,
+	PAGE_NOCACHE | PAGE_EXECUTE,
+	PAGE_NOCACHE | PAGE_EXECUTE_READ,
+	PAGE_NOCACHE | PAGE_READWRITE,
+	PAGE_NOCACHE | PAGE_WRITECOPY,
+	PAGE_NOCACHE | PAGE_EXECUTE_READWRITE,
+	PAGE_NOCACHE | PAGE_EXECUTE_WRITECOPY,
+	PAGE_NOACCESS,
+	PAGE_GUARD | PAGE_READONLY,
+	PAGE_GUARD | PAGE_EXECUTE,
+	PAGE_GUARD | PAGE_EXECUTE_READ,
+	PAGE_GUARD | PAGE_READWRITE,
+	PAGE_GUARD | PAGE_WRITECOPY,
+	PAGE_GUARD | PAGE_EXECUTE_READWRITE,
+	PAGE_GUARD | PAGE_EXECUTE_WRITECOPY,
+	PAGE_NOACCESS,
+	PAGE_WRITECOMBINE | PAGE_READONLY,
+	PAGE_WRITECOMBINE | PAGE_EXECUTE,
+	PAGE_WRITECOMBINE | PAGE_EXECUTE_READ,
+	PAGE_WRITECOMBINE | PAGE_READWRITE,
+	PAGE_WRITECOMBINE | PAGE_WRITECOPY,
+	PAGE_WRITECOMBINE | PAGE_EXECUTE_READWRITE,
+	PAGE_WRITECOMBINE | PAGE_EXECUTE_WRITECOPY,
+};
 
 
 // Structure of MAP
@@ -82,6 +141,9 @@ public:
 	//static bool VirtualQueryEx(uintptr_t &directoryTableBase, uintptr_t &infoStructure);
 	static bool LeakKernelPointers(std::vector<uintptr_t> &pKernelPointers);
 	static uintptr_t FindDirectoryBase();
+	static void WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start, EnumerateRemoteSectionsCallback callbackSection);
+
+
 
 	// Variables
 	static HANDLE hDeviceDrv;
@@ -90,5 +152,6 @@ public:
 	static uintptr_t DTBTargetProcess;
 	static uintptr_t virtualSizeTargetProcess;
 	static uintptr_t pBaseAddressTargetProcess;
+	static uintptr_t pVadRootTargetProcess;
 };
 

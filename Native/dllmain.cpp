@@ -211,6 +211,54 @@ extern "C" void RC_CallConv EnumerateProcesses(EnumerateProcessCallback callback
 
 }
 
+bool CheckKernelStatus(RC_Pointer id)
+{
+if (id)
+	{
+		// I'm using a limited HANDLE to get the name of the executable, is this necessary? ;(
+		const auto handle_limited = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION , FALSE, reinterpret_cast<DWORD>(id));
+
+		if (handle_limited == nullptr)
+		{
+			std::cout << "[-] Unable to get executable name." << std::endl;
+			return false;
+		}
+
+		if (GetProcessImageFileNameA(handle_limited, DriverReader::targetProc, sizeof(DriverReader::targetProc)))
+		{
+			strcpy(DriverReader::targetProc,getFileName(DriverReader::targetProc).c_str());
+		}
+		else
+		{
+			std::cout << "\t[.] targetProc failed: 0x" << std::hex << GetLastError() << std::endl;
+		}
+		CloseHandle(handle_limited);
+	}
+
+
+	if (strcmp(DriverReader::targetProc, DriverReader::previousTargetProc) != 0)
+	{
+		std::cout << "[.] Process context changed." << std::endl;
+		if (DriverReader::getDeviceHandle("\\\\.\\GIO"))
+		{
+			std::cout << "[-] Driver not loaded" << std::endl;
+			return false;
+		}
+		strcpy(DriverReader::previousTargetProc, DriverReader::targetProc);
+		
+		pKProcess = DriverReader::GetKProcess(directoryTableBase);
+
+		pBaseAddress = DriverReader::SearchKProcess(DriverReader::targetProc, directoryTableBase, pKProcess);
+
+		if (!DriverReader::ObtainKProcessInfo(directoryTableBase, pBaseAddress))
+		{
+			std::cout << "[-] ObtainKProcessInfo failed" << std::endl;
+			return false;
+		}
+
+	}
+	return true;
+}
 
 
 /// <summary>Enumerate all sections and modules of the remote process.</summary>
@@ -228,62 +276,16 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 		return;
 	}
 
-	// We are going to store all the sections here
-	std::vector<EnumerateRemoteSectionData> sections;
-
-	MEMORY_BASIC_INFORMATION memInfo = { };
-	memInfo.RegionSize = 0x1000;
-	size_t address = 0;
-
-
-	// TODO: Remove this so we don't need to open a HANDLE to the game, in this case it is just a HANDLE with very limited privileges. Most AC seem to allow this kind of HANDLE.
-	const auto handle_limited = OpenProcess( PROCESS_QUERY_INFORMATION, FALSE, reinterpret_cast<DWORD>(id));
-
-	// TODO: There is a possible option that would allow us to avoid doing this: Walk VadRoot AVL tree from physical memory
-	while (VirtualQueryEx(handle_limited, reinterpret_cast<LPCVOID>(address), &memInfo, sizeof(MEMORY_BASIC_INFORMATION)) != 0 && address + memInfo.RegionSize > address)
+	if (!CheckKernelStatus(id))
 	{
-		if (memInfo.State == MEM_COMMIT)
-		{
-			EnumerateRemoteSectionData section = {};
-			// Storing the Base Address and the RegionSize
-			section.BaseAddress = memInfo.BaseAddress;
-			section.Size = memInfo.RegionSize;
-
-			// Storing the Protection for this particular section
-			section.Protection = SectionProtection::NoAccess;
-			if ((memInfo.Protect & PAGE_EXECUTE) == PAGE_EXECUTE) section.Protection |= SectionProtection::Execute;
-			if ((memInfo.Protect & PAGE_EXECUTE_READ) == PAGE_EXECUTE_READ) section.Protection |= SectionProtection::Execute | SectionProtection::Read;
-			if ((memInfo.Protect & PAGE_EXECUTE_READWRITE) == PAGE_EXECUTE_READWRITE) section.Protection |= SectionProtection::Execute | SectionProtection::Read | SectionProtection::Write;
-			if ((memInfo.Protect & PAGE_EXECUTE_WRITECOPY) == PAGE_EXECUTE_WRITECOPY) section.Protection |= SectionProtection::Execute | SectionProtection::Read | SectionProtection::CopyOnWrite;
-			if ((memInfo.Protect & PAGE_READONLY) == PAGE_READONLY) section.Protection |= SectionProtection::Read;
-			if ((memInfo.Protect & PAGE_READWRITE) == PAGE_READWRITE) section.Protection |= SectionProtection::Read | SectionProtection::Write;
-			if ((memInfo.Protect & PAGE_WRITECOPY) == PAGE_WRITECOPY) section.Protection |= SectionProtection::Read | SectionProtection::CopyOnWrite;
-			if ((memInfo.Protect & PAGE_GUARD) == PAGE_GUARD) section.Protection |= SectionProtection::Guard;
-
-			// Storing the memory Type
-			switch (memInfo.Type)
-			{
-			case MEM_IMAGE:
-				section.Type = SectionType::Image;
-				break;
-			case MEM_MAPPED:
-				section.Type = SectionType::Mapped;
-				break;
-			case MEM_PRIVATE:
-				section.Type = SectionType::Private;
-				break;
-			}
-
-			// Storing the category
-			section.Category = section.Type == SectionType::Private ? SectionCategory::HEAP : SectionCategory::Unknown;
-
-			// Pushing this section instance into the vector
-			sections.push_back(std::move(section));
-		}
-		// Moving to the next section
-		address = reinterpret_cast<size_t>(memInfo.BaseAddress) + memInfo.RegionSize;
+		std::cout << "[-] CheckKernelStatus failed" << std::endl;
+		return;
 	}
-	CloseRemoteProcess(handle_limited);
+
+	std::vector<EnumerateRemoteSectionData> sections;
+	DriverReader::WalkVadADLTree(directoryTableBase,DriverReader::pVadRootTargetProcess, callbackSection);
+
+
 
 	const auto handle2 = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, reinterpret_cast<DWORD>(id));
 	if (handle2 != INVALID_HANDLE_VALUE)
@@ -365,58 +367,13 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 			}
 		}
 	}
-
+	else
+	{
+		std::cout << "[-] Error reading modules 0x" << GetLastError() << std::endl;
+	}
 	
 }
 
-bool CheckKernelStatus(RC_Pointer id)
-{
-if (id)
-	{
-		// I'm using a limited HANDLE to get the name of the executable, is this necessary? ;(
-		const auto handle_limited = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION , FALSE, reinterpret_cast<DWORD>(id));
-
-		if (handle_limited == nullptr)
-		{
-			std::cout << "[-] Unable to get executable name." << std::endl;
-			return false;
-		}
-
-		if (GetProcessImageFileNameA(handle_limited, DriverReader::targetProc, sizeof(DriverReader::targetProc)))
-		{
-			strcpy(DriverReader::targetProc,getFileName(DriverReader::targetProc).c_str());
-		}
-		else
-		{
-			std::cout << "\t[.] targetProc failed: 0x" << std::hex << GetLastError() << std::endl;
-		}
-		CloseHandle(handle_limited);
-	}
-
-
-	if (strcmp(DriverReader::targetProc, DriverReader::previousTargetProc) != 0)
-	{
-		std::cout << "[.] Process context changed." << std::endl;
-		if (DriverReader::getDeviceHandle("\\\\.\\GIO"))
-		{
-			std::cout << "[-] Driver not loaded" << std::endl;
-			return false;
-		}
-		strcpy(DriverReader::previousTargetProc, DriverReader::targetProc);
-		
-		pKProcess = DriverReader::GetKProcess(directoryTableBase);
-
-		pBaseAddress = DriverReader::SearchKProcess(DriverReader::targetProc, directoryTableBase, pKProcess);
-
-		if (!DriverReader::ObtainKProcessInfo(directoryTableBase, pBaseAddress))
-		{
-			std::cout << "[-] ObtainKProcessInfo failed" << std::endl;
-			return false;
-		}
-
-	}
-	return true;
-}
 
 
 /// <summary>Reads memory of the remote process.</summary>
