@@ -267,7 +267,6 @@ if (id)
 /// <param name="callbackModule">The callback for a module.</param>
 void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemoteSectionsCallback callbackSection, EnumerateRemoteModulesCallback callbackModule)
 {
-	 std::cout << "[+] EnumerateRemoteSectionsAndModules " << id << std::endl;
 	// Enumerate all sections and modules of the remote process and call the callback for them.
 	
 	if (callbackSection == nullptr && callbackModule == nullptr && !DriverReader::DTBTargetProcess)
@@ -283,32 +282,23 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 	}
 
 	std::vector<EnumerateRemoteSectionData> sections;
-	DriverReader::WalkVadADLTree(directoryTableBase,DriverReader::pVadRootTargetProcess, callbackSection);
+	DriverReader::sections = {};
+	DriverReader::modules = {};
+	DriverReader::WalkVadADLTree(directoryTableBase,DriverReader::pVadRootTargetProcess);
+
+	sections = DriverReader::sections;
+
+	DriverReader::EnumRing3ProcessModules(directoryTableBase);
 
 
-
-	const auto handle2 = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, reinterpret_cast<DWORD>(id));
-	if (handle2 != INVALID_HANDLE_VALUE)
-	{
-		MODULEENTRY32W me32 = {};
-		me32.dwSize = sizeof(MODULEENTRY32W);
-		if (Module32FirstW(handle2, &me32))
+		if (callbackModule != nullptr)
 		{
-			do
+			for (auto&& module: DriverReader::modules)
 			{
-				if (callbackModule != nullptr)
-				{
-					EnumerateRemoteModuleData data = {};
-					data.BaseAddress = me32.modBaseAddr;
-					data.Size = me32.modBaseSize;
-					std::memcpy(data.Path, me32.szExePath, PATH_MAXIMUM_LENGTH * sizeof(RC_UnicodeChar));
-
-					callbackModule(&data);
-				}
-
+				callbackModule(&module);
 				if (callbackSection != nullptr)
 				{
-					auto it = std::lower_bound(std::begin(sections), std::end(sections), static_cast<LPVOID>(me32.modBaseAddr), [&sections](const auto& lhs, const LPVOID& rhs)
+					auto it = std::lower_bound(std::begin(sections), std::end(sections), static_cast<LPVOID>(module.BaseAddress), [&sections](const auto& lhs, const LPVOID& rhs)
 					{
 						return lhs.BaseAddress < rhs;
 					});
@@ -316,48 +306,28 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 					IMAGE_DOS_HEADER DosHdr = {};
 					IMAGE_NT_HEADERS NtHdr = {};
 
-					DriverReader::ReadVirtualMemory(directoryTableBase, reinterpret_cast<uintptr_t>(me32.modBaseAddr), &DosHdr, sizeof(IMAGE_DOS_HEADER), NULL);
-					DriverReader::ReadVirtualMemory(directoryTableBase, reinterpret_cast<uintptr_t>(me32.modBaseAddr + DosHdr.e_lfanew), &NtHdr, sizeof(IMAGE_NT_HEADERS), NULL);
-
+					DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, (uintptr_t)module.BaseAddress, &DosHdr, sizeof(IMAGE_DOS_HEADER), NULL);
+					DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess,  (uintptr_t)(module.BaseAddress) + DosHdr.e_lfanew, &NtHdr, sizeof(IMAGE_NT_HEADERS), NULL);
+					
 					std::vector<IMAGE_SECTION_HEADER> sectionHeaders(NtHdr.FileHeader.NumberOfSections);
 					
-					DriverReader::ReadVirtualMemory(directoryTableBase, reinterpret_cast<uintptr_t>(me32.modBaseAddr + DosHdr.e_lfanew + sizeof(IMAGE_NT_HEADERS)), sectionHeaders.data(), NtHdr.FileHeader.NumberOfSections * sizeof(IMAGE_SECTION_HEADER), NULL);
-
+					DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, (uintptr_t)(module.BaseAddress) + DosHdr.e_lfanew + sizeof(IMAGE_NT_HEADERS), sectionHeaders.data(), NtHdr.FileHeader.NumberOfSections * sizeof(IMAGE_SECTION_HEADER), NULL);
+					std::cout << NtHdr.FileHeader.NumberOfSections << std::endl;
 					for (auto i = 0; i < NtHdr.FileHeader.NumberOfSections; ++i)
 					{
 						auto&& sectionHeader = sectionHeaders[i];
+						const auto sectionAddress = reinterpret_cast<size_t>(module.BaseAddress) + sectionHeader.VirtualAddress;
 
-						const auto sectionAddress = reinterpret_cast<size_t>(me32.modBaseAddr) + sectionHeader.VirtualAddress;
 						for (auto j = it; j != std::end(sections); ++j)
 						{
-							if (sectionAddress >= reinterpret_cast<size_t>(j->BaseAddress) && sectionAddress < reinterpret_cast<size_t>(j->BaseAddress) + static_cast<size_t>(j->Size))
-							{
-								// Copy the name because it is not null padded.
-								char buffer[IMAGE_SIZEOF_SHORT_NAME + 1] = { 0 };
-								std::memcpy(buffer, sectionHeader.Name, IMAGE_SIZEOF_SHORT_NAME);
-
-								if (std::strcmp(buffer, ".text") == 0 || std::strcmp(buffer, "code") == 0)
-								{
-									j->Category = SectionCategory::CODE;
-								}
-								else if (std::strcmp(buffer, ".data") == 0 || std::strcmp(buffer, "data") == 0 || std::strcmp(buffer, ".rdata") == 0 || std::strcmp(buffer, ".idata") == 0)
-								{
-									j->Category = SectionCategory::DATA;
-								}
-
-								MultiByteToUnicode(buffer, j->Name, IMAGE_SIZEOF_SHORT_NAME);
-								std::memcpy(j->ModulePath, me32.szExePath, PATH_MAXIMUM_LENGTH * sizeof(RC_UnicodeChar));
-
-								break;
-							}
+							std::memcpy(j->ModulePath, module.Path, PATH_MAXIMUM_LENGTH * sizeof(RC_UnicodeChar));
+							break;
 						}
 
 					}
 				}
-			} while (Module32NextW(handle2, &me32));
+			}
 		}
-
-		CloseHandle(handle2);
 
 		if (callbackSection != nullptr)
 		{
@@ -366,12 +336,6 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 				callbackSection(&section);
 			}
 		}
-	}
-	else
-	{
-		std::cout << "[-] Error reading modules 0x" << GetLastError() << std::endl;
-	}
-	
 }
 
 

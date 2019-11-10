@@ -8,6 +8,9 @@ uintptr_t DriverReader::DTBTargetProcess = 0;
 uintptr_t DriverReader::virtualSizeTargetProcess = 0;
 uintptr_t DriverReader::pBaseAddressTargetProcess = 0;
 uintptr_t DriverReader::pVadRootTargetProcess = 0;
+uintptr_t DriverReader::pPEBTargetProcess = 0;
+std::vector<EnumerateRemoteSectionData> DriverReader::sections;
+std::vector<EnumerateRemoteModuleData> DriverReader::modules;
 
 int DriverReader::getDeviceHandle(LPTSTR name)
 {
@@ -467,6 +470,15 @@ if (!DriverReader::ReadVirtualMemory(directoryTableBase, pKProcessAddress + OFFS
 	std::cout << "\t[+] VadRoot: 0x" << std::hex << DriverReader::pVadRootTargetProcess << std::endl;
 
 
+	if (!DriverReader::ReadVirtualMemory(directoryTableBase, pKProcessAddress + OFFSET_EPROCESS_PEB,
+		&(DriverReader::pPEBTargetProcess), sizeof(uintptr_t), NULL))
+	{
+		std::cout << "[-] Failed trying to obtain the PEB." << std::endl;
+		return false;
+	}
+	std::cout << "\t[+] PEB: 0x" << std::hex << DriverReader::pPEBTargetProcess << std::endl;
+
+
 	return true;
 }
 
@@ -500,13 +512,13 @@ EnumerateRemoteSectionData GetVadNodeInfo(uintptr_t directoryTableBase, uintptr_
 	uint64_t startingVPN = (startingVPNLow << 12) | (startingVPNHigh << 44);// startingVPNHigh << 32 | startingVPNLow;
 	//uintptr_t endingVPN = (long long) endingVPNHigh << 32 | endingVPNLow;
 	uint64_t endingVPN = ( (endingVPNLow + 1) << 12 | (endingVPNHigh << 44));
-	std::cout << "#################" << std::endl;
+	//std::cout << "#################" << std::endl;
 	//std::cout << startingVPNHigh << std::endl;
 	//std::cout << startingVPNLow << std::endl;
-	std::cout << startingVPN << std::endl;
+	//std::cout << startingVPN << std::endl;
 	//std::cout << endingVPNHigh << std::endl;
 	//std::cout << endingVPNLow << std::endl;
-	std::cout << endingVPN << std::endl;
+	//std::cout << endingVPN << std::endl;
 	//std::cout << endingVPN - startingVPN << std::endl;
 	EnumerateRemoteSectionData section = {};
 	section.BaseAddress = (void *)startingVPN;
@@ -544,7 +556,7 @@ EnumerateRemoteSectionData GetVadNodeInfo(uintptr_t directoryTableBase, uintptr_
 }
 
 
-void DriverReader::WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start, EnumerateRemoteSectionsCallback callbackSection)
+void DriverReader::WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start)
 {
 
 	if (start == NULL)
@@ -561,7 +573,7 @@ void DriverReader::WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start,
 
 	//Sleep(3000);
 
-	WalkVadADLTree(directoryTableBase,left, callbackSection);
+	WalkVadADLTree(directoryTableBase, left);
 
 
 	//Sleep(3000);
@@ -575,23 +587,65 @@ void DriverReader::WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start,
 	//Sleep(3000);
 	EnumerateRemoteSectionData section = GetVadNodeInfo(directoryTableBase, start);
 
-	callbackSection(&section);
+	//////callbackSection(&section);
+	DriverReader::sections.push_back(section);
 
-	WalkVadADLTree(directoryTableBase,right, callbackSection);
+
+	WalkVadADLTree(directoryTableBase, right);
 
 
 }
 	
 	
-   /*int i;
-   if (p != NULL) {
-      show(p->r, l+ 1);
-      cout<<" ";
-      if (p == r)
-         cout << "Root -> ";
-      for (i = 0; i < l&& p != r; i++)
-         cout << " ";
-         cout << p->d;
-         show(p->l, l + 1);
-   }*/
-//}
+void DriverReader::EnumRing3ProcessModules(uintptr_t directoryTableBase)
+{
+ 
+	PEB_LDR_DATA ldr;
+	uintptr_t pLDR = 0;
+	DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, DriverReader::pPEBTargetProcess + OFFSET_PEB_LDR , &pLDR, sizeof(uintptr_t), NULL);
+	DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, pLDR , &ldr,sizeof(PEB_LDR_DATA), NULL);
+
+
+	LIST_ENTRY* head = ldr.InMemoryOrderModuleList.Flink;
+	LIST_ENTRY* next = head;
+
+    PLDR_MODULE pLdrModule = nullptr;
+	LDR_MODULE LdrModule;
+	do
+	{
+            LDR_DATA_TABLE_ENTRY LdrEntry;
+            LDR_DATA_TABLE_ENTRY* Base = CONTAINING_RECORD(head, LDR_DATA_TABLE_ENTRY, InMemoryOrderLinks);
+
+            if (DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, (uintptr_t)Base, &LdrEntry, sizeof(LdrEntry), NULL))
+            {
+                char* pLdrModuleOffset = reinterpret_cast<char*>(head) - sizeof(LIST_ENTRY);
+                
+				DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, (uintptr_t)pLdrModuleOffset, &pLdrModule, sizeof(pLdrModule), NULL);
+                DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, (uintptr_t)pLdrModule, &LdrModule, sizeof(LdrModule), NULL);
+
+                if (LdrEntry.DllBase)
+                {
+					//std::wstring fullname = LdrModule.FullDllName;
+					WCHAR strFullDllName[MAX_PATH] = { 0 };
+					if (DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, 
+						reinterpret_cast<uintptr_t>(LdrModule.FullDllName.Buffer),
+						&strFullDllName,
+						LdrModule.FullDllName.Length, NULL))
+					{
+						EnumerateRemoteModuleData module = {};
+						//wprintf(L"Full Dll Name: %s\n", strFullDllName);
+						//std::cout<< "BaseAddress:     " << LdrModule.BaseAddress<<std::endl;
+						module.BaseAddress = LdrModule.BaseAddress;
+						std::copy(strFullDllName, strFullDllName + MAX_PATH, module.Path);
+						module.Size = LdrModule.SizeOfImage;
+						DriverReader::modules.push_back(module);
+					}
+                }
+
+                head = LdrEntry.InMemoryOrderLinks.Flink;
+            }
+        }
+        while (head != next);
+
+	return;
+}

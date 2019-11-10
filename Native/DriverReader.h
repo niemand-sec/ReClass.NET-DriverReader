@@ -28,6 +28,9 @@
 
 // Kernel offsets (used for enumerate modules and sections of a process using kernel memory) w10 1607
 #define OFFSET_VADROOT 0x620
+#define OFFSET_EPROCESS_PEB 0x3f8
+#define OFFSET_PEB_LDR 0x018
+#define OFFSET_LDR_InMemoryOrderModuleList 0x20
 /*
 (*((ntkrnlmp!_MMVAD_SHORT *)0xffffb803e0fa73a0))                 [Type: _MMVAD_SHORT]
     [+0x000] VadNode          [Type: _RTL_BALANCED_NODE]
@@ -43,12 +46,7 @@
 #define OFFSET_STARTINGVPNHIGH 0x020
 #define OFFSET_ENDINGVPNHIGH 0x021
 #define OFFSET_MMVAD_SHORT_U 0x030
-#define OFFSET_
 
-
-enum class ejemplo
-{
-};
 
 const ULONG ProtectionFlags[] = {
 	PAGE_NOACCESS,
@@ -127,6 +125,24 @@ struct SYSTEM_HANDLE_INFORMATION_EX					// Size => 36
 };
 
 
+typedef struct _LDR_MODULE
+{
+	LIST_ENTRY      InLoadOrderModuleList;
+	LIST_ENTRY      InMemoryOrderModuleList;
+	LIST_ENTRY      InInitializationOrderModuleList;
+	PVOID           BaseAddress;
+	PVOID           EntryPoint;
+	ULONG           SizeOfImage;
+	UNICODE_STRING  FullDllName;
+	UNICODE_STRING  BaseDllName;
+	ULONG           Flags;
+	SHORT           LoadCount;
+	SHORT           TlsIndex;
+	LIST_ENTRY      HashTableEntry;
+	ULONG           TimeDateStamp;
+} LDR_MODULE, *PLDR_MODULE;
+
+
 class DriverReader
 {
 public:
@@ -141,8 +157,8 @@ public:
 	//static bool VirtualQueryEx(uintptr_t &directoryTableBase, uintptr_t &infoStructure);
 	static bool LeakKernelPointers(std::vector<uintptr_t> &pKernelPointers);
 	static uintptr_t FindDirectoryBase();
-	static void WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start, EnumerateRemoteSectionsCallback callbackSection);
-
+	static void WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start);
+	static void EnumRing3ProcessModules(uintptr_t directoryTableBase);
 
 
 	// Variables
@@ -153,5 +169,9 @@ public:
 	static uintptr_t virtualSizeTargetProcess;
 	static uintptr_t pBaseAddressTargetProcess;
 	static uintptr_t pVadRootTargetProcess;
+	static uintptr_t pPEBTargetProcess;
+	static std::vector<EnumerateRemoteSectionData> sections;
+	static std::vector<EnumerateRemoteModuleData> modules;
+
 };
 
