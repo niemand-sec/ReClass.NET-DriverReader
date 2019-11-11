@@ -483,9 +483,6 @@ if (!DriverReader::ReadVirtualMemory(directoryTableBase, pKProcessAddress + OFFS
 }
 
 
-
-
-
 // Functions that will help us to dump the VadRoot AVL Tree, which has all the memory information about a particular process.
 
 EnumerateRemoteSectionData GetVadNodeInfo(uintptr_t directoryTableBase, uintptr_t node)
@@ -508,18 +505,8 @@ EnumerateRemoteSectionData GetVadNodeInfo(uintptr_t directoryTableBase, uintptr_
 	// Reading the unsigned long u from MMVAD_SHORT
 	DriverReader::ReadVirtualMemory(directoryTableBase, node + OFFSET_MMVAD_SHORT_U, &u, sizeof(unsigned long), NULL);
 
-	//uintptr_t startingVPN = (long long) startingVPNHigh << 32 | startingVPNLow;
-	uint64_t startingVPN = (startingVPNLow << 12) | (startingVPNHigh << 44);// startingVPNHigh << 32 | startingVPNLow;
-	//uintptr_t endingVPN = (long long) endingVPNHigh << 32 | endingVPNLow;
+	uint64_t startingVPN = (startingVPNLow << 12) | (startingVPNHigh << 44);
 	uint64_t endingVPN = ( (endingVPNLow + 1) << 12 | (endingVPNHigh << 44));
-	//std::cout << "#################" << std::endl;
-	//std::cout << startingVPNHigh << std::endl;
-	//std::cout << startingVPNLow << std::endl;
-	//std::cout << startingVPN << std::endl;
-	//std::cout << endingVPNHigh << std::endl;
-	//std::cout << endingVPNLow << std::endl;
-	//std::cout << endingVPN << std::endl;
-	//std::cout << endingVPN - startingVPN << std::endl;
 	EnumerateRemoteSectionData section = {};
 	section.BaseAddress = (void *)startingVPN;
 	section.Size = endingVPN - startingVPN;
@@ -549,7 +536,7 @@ EnumerateRemoteSectionData GetVadNodeInfo(uintptr_t directoryTableBase, uintptr_
     //  [+0x000 (17:17)] ManySubsections  : 0x0 [Type: unsigned long]
     //  [+0x000 (18:18)] Enclave          : 0x0 [Type: unsigned long]
 	//  We need the memory type, we can check with the bit 15 if its private memory
-	//
+	//  TODO: not mandatory.
 
 
 	return section;
@@ -562,50 +549,35 @@ void DriverReader::WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start)
 	if (start == NULL)
 		return;
 	
-	//std::cout << "Start " << start << std::endl;
-	//Sleep(3000);
-	// Read Left pointer
-	// ReadVirtualMemory
 	uintptr_t left = 0;
-	//std::cout << "DTB " << DriverReader::DTBTargetProcess << std::endl;
 	DriverReader::ReadVirtualMemory(directoryTableBase, start, &left, sizeof(uintptr_t), NULL);
-	//std::cout << "Left " << left << std::endl;
-
-	//Sleep(3000);
 
 	WalkVadADLTree(directoryTableBase, left);
 
-
-	//Sleep(3000);
-	// Read right pointer
-	// ReadVirtualMemory
 	uintptr_t right = 0;
 	DriverReader::ReadVirtualMemory(directoryTableBase, start + sizeof(uintptr_t), &right, sizeof(uintptr_t), NULL);
 
-	//std::cout << "Right " << right << std::endl;
-
-	//Sleep(3000);
 	EnumerateRemoteSectionData section = GetVadNodeInfo(directoryTableBase, start);
 
-	//////callbackSection(&section);
 	DriverReader::sections.push_back(section);
 
-
 	WalkVadADLTree(directoryTableBase, right);
-
-
 }
 	
 	
 void DriverReader::EnumRing3ProcessModules(uintptr_t directoryTableBase)
 {
  
+	// Variables used to store lpr pointer and data.
 	PEB_LDR_DATA ldr;
 	uintptr_t pLDR = 0;
+
+	// We need to dereference the pointer and obtain retrieve the whole LDR structure.
 	DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, DriverReader::pPEBTargetProcess + OFFSET_PEB_LDR , &pLDR, sizeof(uintptr_t), NULL);
 	DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, pLDR , &ldr,sizeof(PEB_LDR_DATA), NULL);
 
-
+	// InMemoryOrderModuleList will have the head of a linked list.
+	// We can traverse the whole list to obtain all the currently loaded modules.
 	LIST_ENTRY* head = ldr.InMemoryOrderModuleList.Flink;
 	LIST_ENTRY* next = head;
 
@@ -619,25 +591,35 @@ void DriverReader::EnumRing3ProcessModules(uintptr_t directoryTableBase)
             if (DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, (uintptr_t)Base, &LdrEntry, sizeof(LdrEntry), NULL))
             {
                 char* pLdrModuleOffset = reinterpret_cast<char*>(head) - sizeof(LIST_ENTRY);
-                
+				
+				// Obtaining module pointer
 				DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, (uintptr_t)pLdrModuleOffset, &pLdrModule, sizeof(pLdrModule), NULL);
-                DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, (uintptr_t)pLdrModule, &LdrModule, sizeof(LdrModule), NULL);
+                // Retrieven module information
+				DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, (uintptr_t)pLdrModule, &LdrModule, sizeof(LdrModule), NULL);
 
                 if (LdrEntry.DllBase)
                 {
 					//std::wstring fullname = LdrModule.FullDllName;
+
+					// Retrieve the FullDllName
 					WCHAR strFullDllName[MAX_PATH] = { 0 };
 					if (DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, 
 						reinterpret_cast<uintptr_t>(LdrModule.FullDllName.Buffer),
 						&strFullDllName,
 						LdrModule.FullDllName.Length, NULL))
 					{
+						// We create the EnumerateRemoteModuleData so we can return it to ReClass
 						EnumerateRemoteModuleData module = {};
-						//wprintf(L"Full Dll Name: %s\n", strFullDllName);
-						//std::cout<< "BaseAddress:     " << LdrModule.BaseAddress<<std::endl;
+						
+						// Debuging code :P
+						// wprintf(L"Full Dll Name: %s\n", strFullDllName);
+						// std::cout<< "BaseAddress:     " << LdrModule.BaseAddress<<std::endl;
+						
 						module.BaseAddress = LdrModule.BaseAddress;
 						std::copy(strFullDllName, strFullDllName + MAX_PATH, module.Path);
 						module.Size = LdrModule.SizeOfImage;
+						
+						// We push the current module into the vecto we later use to notify ReClass
 						DriverReader::modules.push_back(module);
 					}
                 }
