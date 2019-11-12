@@ -433,6 +433,9 @@ uintptr_t DriverReader::SearchKProcess(LPCVOID processName, uintptr_t &directory
 
 }
 
+
+// This function retrieves information from the EProcess/KProcess structure of the target process in kernel.
+// All this will be stored on global variables so we can use them anywhere.
 bool DriverReader::ObtainKProcessInfo(uintptr_t &directoryTableBase, uintptr_t pKProcessAddress)
 {
 	std::cout << "\t[+] Grabing info from target process" << std::endl;
@@ -498,15 +501,21 @@ EnumerateRemoteSectionData GetVadNodeInfo(uintptr_t directoryTableBase, uintptr_
 	uint64_t startingVPNHigh = 0;
 	uint64_t endingVPNHigh = 0;
 	unsigned long u = 0;
+
+	// Reading the starting and ending VPN.
 	DriverReader::ReadVirtualMemory(directoryTableBase, node + OFFSET_STARTINGVPN, &startingVPNLow, sizeof(uint32_t), NULL);
 	DriverReader::ReadVirtualMemory(directoryTableBase, node + OFFSET_ENDINGVPN, &endingVPNLow, sizeof(uint32_t), NULL);
 	DriverReader::ReadVirtualMemory(directoryTableBase, node + OFFSET_STARTINGVPNHIGH, &startingVPNHigh, sizeof(uint8_t), NULL);
 	DriverReader::ReadVirtualMemory(directoryTableBase, node + OFFSET_ENDINGVPNHIGH, &endingVPNHigh, sizeof(uint8_t), NULL);
+	
 	// Reading the unsigned long u from MMVAD_SHORT
 	DriverReader::ReadVirtualMemory(directoryTableBase, node + OFFSET_MMVAD_SHORT_U, &u, sizeof(unsigned long), NULL);
 
+	// We need to put together this two parts, some lshr will doo all the work.
 	uint64_t startingVPN = (startingVPNLow << 12) | (startingVPNHigh << 44);
 	uint64_t endingVPN = ( (endingVPNLow + 1) << 12 | (endingVPNHigh << 44));
+
+	// Let's create the object for our section.
 	EnumerateRemoteSectionData section = {};
 	section.BaseAddress = (void *)startingVPN;
 	section.Size = endingVPN - startingVPN;
@@ -536,31 +545,38 @@ EnumerateRemoteSectionData GetVadNodeInfo(uintptr_t directoryTableBase, uintptr_
     //  [+0x000 (17:17)] ManySubsections  : 0x0 [Type: unsigned long]
     //  [+0x000 (18:18)] Enclave          : 0x0 [Type: unsigned long]
 	//  We need the memory type, we can check with the bit 15 if its private memory
-	//  TODO: not mandatory.
-
+	//  TODO: not mandatory, this is why we see an unknown on the GUI when displaying all the sections.
 
 	return section;
 }
 
 
+// Since we can't open a handle to the process and call VirtualQueryEx
 void DriverReader::WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start)
 {
 
 	if (start == NULL)
 		return;
 	
+	// Since we need to traverse a balanced tree, 
+	// we first read all the left branches and then we read the right one while we go up again.
 	uintptr_t left = 0;
 	DriverReader::ReadVirtualMemory(directoryTableBase, start, &left, sizeof(uintptr_t), NULL);
 
+	// Yep, recursion ;)
 	WalkVadADLTree(directoryTableBase, left);
 
+	// Now the right nodes.
 	uintptr_t right = 0;
 	DriverReader::ReadVirtualMemory(directoryTableBase, start + sizeof(uintptr_t), &right, sizeof(uintptr_t), NULL);
 
+	// We need to obtain information from each node: starting and ending address, protection, etc.
 	EnumerateRemoteSectionData section = GetVadNodeInfo(directoryTableBase, start);
 
+	// We push that information so we can later notify ReClass.
 	DriverReader::sections.push_back(section);
 
+	// And again recursion
 	WalkVadADLTree(directoryTableBase, right);
 }
 	

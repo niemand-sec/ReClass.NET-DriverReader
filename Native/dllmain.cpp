@@ -144,6 +144,7 @@ extern "C" void RC_CallConv CloseRemoteProcess(RC_Pointer handle)
 extern "C" void RC_CallConv EnumerateProcesses(EnumerateProcessCallback callbackProcess)
 {
 	// With this trick we'll be able to print content to the console.
+	// I let this here, because if you are using this you will probably need to debug, trust me.
 	AllocConsole();
 	SetConsoleTitle("Debug");
 	freopen("CONOUT$", "w", stdout);
@@ -211,11 +212,13 @@ extern "C" void RC_CallConv EnumerateProcesses(EnumerateProcessCallback callback
 
 }
 
+// Confirm of prepare if we have all what we need to read a ring3 process memory.
 bool CheckKernelStatus(RC_Pointer id)
 {
 if (id)
 	{
 		// I'm using a limited HANDLE to get the name of the executable, is this necessary? ;(
+		// It is not so uncommon to do this, and AC allow it.
 		const auto handle_limited = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION , FALSE, reinterpret_cast<DWORD>(id));
 
 		if (handle_limited == nullptr)
@@ -224,6 +227,7 @@ if (id)
 			return false;
 		}
 
+		// I was to lazy to find another way of getting this.
 		if (GetProcessImageFileNameA(handle_limited, DriverReader::targetProc, sizeof(DriverReader::targetProc)))
 		{
 			strcpy(DriverReader::targetProc,getFileName(DriverReader::targetProc).c_str());
@@ -235,7 +239,8 @@ if (id)
 		CloseHandle(handle_limited);
 	}
 
-
+	// Have we selected a new process on ReClass?
+	// In that case we have to retrieve all the process information we need.
 	if (strcmp(DriverReader::targetProc, DriverReader::previousTargetProc) != 0)
 	{
 		std::cout << "[.] Process context changed." << std::endl;
@@ -244,12 +249,18 @@ if (id)
 			std::cout << "[-] Driver not loaded" << std::endl;
 			return false;
 		}
+
+		// Let's store this process as the last one we used for the next time we run this method.
 		strcpy(DriverReader::previousTargetProc, DriverReader::targetProc);
-		
+	
+		// Obtaining a valid pointer to a KProcess.
+		// We need this to traverse the linked list of processes and find our target.
 		pKProcess = DriverReader::GetKProcess(directoryTableBase);
 
+		// With this pKProcess we traverse it until we find what we want. Our target process.
 		pBaseAddress = DriverReader::SearchKProcess(DriverReader::targetProc, directoryTableBase, pKProcess);
 
+		// And now we get all the kernel information we need to work ;)
 		if (!DriverReader::ObtainKProcessInfo(directoryTableBase, pBaseAddress))
 		{
 			std::cout << "[-] ObtainKProcessInfo failed" << std::endl;
@@ -268,26 +279,34 @@ if (id)
 void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemoteSectionsCallback callbackSection, EnumerateRemoteModulesCallback callbackModule)
 {
 	// Enumerate all sections and modules of the remote process and call the callback for them.
-	
 	if (callbackSection == nullptr && callbackModule == nullptr && !DriverReader::DTBTargetProcess)
 	{
 		std::cout << "[-] EnumerateRemoteSectionsAndModules failed" << std::endl;
 		return;
 	}
 
+	// We need to be sure that everything is setup for this function to run properly. 
+	// If not we set it up here
 	if (!CheckKernelStatus(id))
 	{
 		std::cout << "[-] CheckKernelStatus failed" << std::endl;
 		return;
 	}
 
+	// Reset variables from the last run, and init new ones.
 	std::vector<EnumerateRemoteSectionData> sections;
 	DriverReader::sections = {};
 	DriverReader::modules = {};
+
+	// WalkVadADLTree will do the magic and retrieve all the section information we need.
 	DriverReader::WalkVadADLTree(directoryTableBase,DriverReader::pVadRootTargetProcess);
 
+	// I wanted to reuse my previous code so I just reassigned to a local variable
+	// You thought you were lazy?
 	sections = DriverReader::sections;
 
+	// We already god all the sections, now we nede the modules
+	// Here we go.
 	DriverReader::EnumRing3ProcessModules(directoryTableBase);
 
 
@@ -295,7 +314,12 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 		{
 			for (auto&& module: DriverReader::modules)
 			{
+				// Let's notify to Reclass we got a new module.
 				callbackModule(&module);
+
+
+				// Now we can add additional information to the sections we already have on our vector sections.
+				// This can be done parsing the headers from the PE as you can see below.
 				if (callbackSection != nullptr)
 				{
 					auto it = std::lower_bound(std::begin(sections), std::end(sections), static_cast<LPVOID>(module.BaseAddress), [&sections](const auto& lhs, const LPVOID& rhs)
@@ -306,6 +330,7 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 					IMAGE_DOS_HEADER DosHdr = {};
 					IMAGE_NT_HEADERS NtHdr = {};
 
+					// Reading the headers.
 					DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess, (uintptr_t)module.BaseAddress, &DosHdr, sizeof(IMAGE_DOS_HEADER), NULL);
 					DriverReader::ReadVirtualMemory(DriverReader::DTBTargetProcess,  (uintptr_t)(module.BaseAddress) + DosHdr.e_lfanew, &NtHdr, sizeof(IMAGE_NT_HEADERS), NULL);
 					
@@ -320,6 +345,7 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 
 						for (auto j = it; j != std::end(sections); ++j)
 						{
+							// We add the path to the executable.
 							std::memcpy(j->ModulePath, module.Path, PATH_MAXIMUM_LENGTH * sizeof(RC_UnicodeChar));
 							break;
 						}
@@ -329,6 +355,7 @@ void RC_CallConv EnumerateRemoteSectionsAndModules(RC_Pointer id, EnumerateRemot
 			}
 		}
 
+		// Finally, let's notify ReClass about the sections.
 		if (callbackSection != nullptr)
 		{
 			for (auto&& section : sections)
@@ -384,7 +411,6 @@ extern "C" bool RC_CallConv WriteRemoteMemory(RC_Pointer id, RC_Pointer address,
 {
 	if (!CheckKernelStatus(id))
 		return false;
-
 
 	// Write the buffer into the memory of the remote process.
     buffer = reinterpret_cast<RC_Pointer>(reinterpret_cast<uintptr_t>(buffer) + offset);
