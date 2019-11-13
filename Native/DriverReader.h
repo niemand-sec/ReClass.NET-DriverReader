@@ -8,6 +8,11 @@
 #include <ReClassNET_Plugin.hpp>
 #pragma comment( lib, "ntdll.lib" )
 
+// IMPORTANT!!! You need to set up this constant to the windows version
+// you are going to compile it for.
+#define WINVERSION 1607
+
+
 #define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
 
 // GIO Driver
@@ -18,8 +23,6 @@
 
 // Kernel offsets (used for Read Write kernel memory) w10 1607
 #define OFFSET_DIRECTORYTABLEBASE 0x028
-#define OFFSET_UNIQUEPROCESSID 0x2e8
-#define OFFSET_ACTIVEPROCESSLINKS 0x2f0
 #define OFFSET_VIRTUALSIZE 0x338
 #define OFFSET_SECTIONBASEADDRESS 0x3c0
 #define OFFSET_OBJECTTABLE 0x418
@@ -27,10 +30,24 @@
 #define OFFSET_PRIORITYCLASS 0x45f
 
 // Kernel offsets (used for enumerate modules and sections of a process using kernel memory) w10 1607
-#define OFFSET_VADROOT 0x620
 #define OFFSET_EPROCESS_PEB 0x3f8
 #define OFFSET_PEB_LDR 0x018
 #define OFFSET_LDR_InMemoryOrderModuleList 0x20
+
+#if (WINVERSION == 1607)
+#define OFFSET_ACTIVEPROCESSLINKS 0x2f0
+#define OFFSET_UNIQUEPROCESSID 0x2e8
+#define OFFSET_VADROOT 0x620
+#endif
+
+
+#if (WINVERSION == 1703 || WINVERSION == 1709)
+#define OFFSET_ACTIVEPROCESSLINKS 0x2e8
+#define OFFSET_UNIQUEPROCESSID 0x2e0
+#define OFFSET_VADROOT 0x628
+#endif
+
+
 /*
 (*((ntkrnlmp!_MMVAD_SHORT *)0xffffb803e0fa73a0))                 [Type: _MMVAD_SHORT]
     [+0x000] VadNode          [Type: _RTL_BALANCED_NODE]
