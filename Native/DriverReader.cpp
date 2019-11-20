@@ -552,7 +552,7 @@ EnumerateRemoteSectionData GetVadNodeInfo(uintptr_t directoryTableBase, uintptr_
 
 
 // Since we can't open a handle to the process and call VirtualQueryEx
-void DriverReader::WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start)
+void DriverReader::WalkVadAVLTree(uintptr_t directoryTableBase, uintptr_t start)
 {
 
 	if (start == NULL)
@@ -564,7 +564,7 @@ void DriverReader::WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start)
 	DriverReader::ReadVirtualMemory(directoryTableBase, start, &left, sizeof(uintptr_t), NULL);
 
 	// Yep, recursion ;)
-	WalkVadADLTree(directoryTableBase, left);
+	WalkVadAVLTree(directoryTableBase, left);
 
 	// Now the right nodes.
 	uintptr_t right = 0;
@@ -577,7 +577,7 @@ void DriverReader::WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start)
 	DriverReader::sections.push_back(section);
 
 	// And again recursion
-	WalkVadADLTree(directoryTableBase, right);
+	WalkVadAVLTree(directoryTableBase, right);
 }
 	
 	

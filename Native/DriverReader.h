@@ -174,7 +174,7 @@ public:
 	//static bool VirtualQueryEx(uintptr_t &directoryTableBase, uintptr_t &infoStructure);
 	static bool LeakKernelPointers(std::vector<uintptr_t> &pKernelPointers);
 	static uintptr_t FindDirectoryBase();
-	static void WalkVadADLTree(uintptr_t directoryTableBase, uintptr_t start);
+	static void WalkVadAVLTree(uintptr_t directoryTableBase, uintptr_t start);
 	static void EnumRing3ProcessModules(uintptr_t directoryTableBase);
 
 
