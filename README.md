@@ -23,11 +23,31 @@ If you want to compile the ReClass.NET Sample Plugins just fork the repository a
 ..\ReClass.NET-SamplePlugin\ReClass.NET SamplePlugin.sln
 ```
 
+## Configuration
+
+> Remember to configure the constant `WINVERSION` beforing compiling. Versions (x64) 1607, 1703 and 1709 are supported for now.
+
+- 1803+ version are not currently supported due to new security patches added by Windows that restrict the memory access level. Becareful with the security patches there are some KB that backport this fix to older versions, make sure you disable Windows Updates.
+
+- DEBUG Console comes enabled by default, can be disabled on the code. 
 
 ## Additional information
+
+This plugin makes use of the module [DriverHelper](https://github.com/niemand-sec/AntiCheat-Testing-Framework/tree/master/DriverHelper) from [AntiCheat-Testing-Framework](https://github.com/niemand-sec/AntiCheat-Testing-Framework). 
+
+DriverHelper has been renamed to DriverReader on this project, and it has been enhaced in order to provide additional features.
+
+Some usefull functions that can be found on this module:
+
+- **EnumRing3ProcessModules**: This function help us to extract from PEB_LDR_DATA all the module information we need.
+- **WalkVadAVLTree**: Traverse the VadRoot AVL Tree. The pointer to the head of VadRoot can be found inside EPROCESS structure. By walking the tree it is possible to enumerate all the sections/modules mapped into the Ring3 process. 
+- **GetVadNodeInfo**: Extract the required information from each node of the VadRoot AVL Tree (starting/endingVPN, size, protections, etc).
 
 
 
 ## About this Project
 
 All this code is a result of the Researching presented at BlackHat Europe 2019 (London) "Unveiling the underground world of Anti-Cheats".
+
+Links:
+- https://www.blackhat.com/eu-19/briefings/schedule/index.html#unveiling-the-underground-world-of-anti-cheats-17359

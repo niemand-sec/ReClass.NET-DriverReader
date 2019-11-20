@@ -21,7 +21,7 @@
 #define IOCTL_GIO_MEMCPY 0xC3502808
 
 
-// Kernel offsets (used for Read Write kernel memory) w10 1607
+// Kernel offsets (used for Read Write kernel memory)
 #define OFFSET_DIRECTORYTABLEBASE 0x028
 #define OFFSET_VIRTUALSIZE 0x338
 #define OFFSET_SECTIONBASEADDRESS 0x3c0
