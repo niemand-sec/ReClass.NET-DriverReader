@@ -23,6 +23,8 @@ If you want to compile the ReClass.NET Sample Plugins just fork the repository a
 ..\ReClass.NET-SamplePlugin\ReClass.NET SamplePlugin.sln
 ```
 
+For obvious reasons,the Gigabyte driver is not provided on this repository. But if you are compiling this plugin, I'm pretty sure you will be able to get that driver.
+
 ## Configuration
 
 > Remember to configure the constant `WINVERSION` beforing compiling. Versions (x64) 1607, 1703 and 1709 are supported for now.
